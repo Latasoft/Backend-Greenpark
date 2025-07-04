@@ -1,18 +1,23 @@
 const admin = require('firebase-admin');
-const path = require('path');
+const dotenv = require('dotenv');
+dotenv.config();
 
-// Carga la clave desde la raíz del proyecto
-const serviceAccount = require(path.resolve(__dirname, '../../firebase-admin-key.json'));
+const storageBucket = 'tu-nombre-de-bucket.appspot.com'; // Cambia esto por el nombre real
 
-// Reemplaza con el nombre de tu bucket
-const storageBucket = 'tu-nombre-de-bucket.appspot.com'; // Ejemplo: 'miapp-ejemplo.appspot.com'
+const encodedKey = process.env.FIREBASE_ADMIN_KEY;
+
+if (!encodedKey) {
+  throw new Error('FIREBASE_ADMIN_KEY no está definido en el archivo .env');
+}
+
+const decodedKey = decodeURIComponent(encodedKey);
+const serviceAccount = JSON.parse(decodedKey);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  storageBucket, // Agrega esta línea
+  storageBucket,
 });
 
-// Exportamos Firestore y Storage Bucket
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
