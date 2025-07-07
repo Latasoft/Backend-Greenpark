@@ -2,7 +2,7 @@ const admin = require('firebase-admin');
 const dotenv = require('dotenv');
 dotenv.config();
 
-const storageBucket = 'tu-nombre-de-bucket.appspot.com'; // Cambia esto por el nombre real
+const storageBucket = 'greenpark-e3d59.appspot.com'; // Cambia esto por el nombre real
 
 const encodedKey = process.env.FIREBASE_ADMIN_KEY;
 
