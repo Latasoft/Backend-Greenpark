@@ -8,7 +8,13 @@ const mailRoutes = require('./src/routes/mailRoutes');// Ruta para los correos
 const bookRoutes = require('./src/routes/bookRoutes');// Ruta para libros
 const cursosRoutes = require("./src/routes/cursosRoutes");// Ruta para cursos
 
-app.use(cors()); 
+app.use(cors({
+  origin: 'http://localhost:5173', // la URL de tu frontend
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true // si usas cookies o autenticación basada en credenciales
+}));
+
 app.use(express.json());
 
 // Ruta pública para acceder a los PDFs subidos
