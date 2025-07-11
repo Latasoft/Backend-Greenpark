@@ -13,6 +13,7 @@ const parseFecha = (fechaStr) => {
 
 // Almacenamiento en memoria para multer
 const storage = multer.memoryStorage();
+
 const upload = multer({
   storage,
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
@@ -36,17 +37,30 @@ const upload = multer({
     ) {
       cb(null, true);
     } else {
-      cb(new Error("Tipo de archivo no permitido"));
+      cb(new Error("Tipo de archivo no permitido"), false);
     }
   },
 });
 
-// Controlador para crear curso
-exports.crearCurso = [
+// Middleware para manejar errores de multer
+const uploadMiddleware = (req, res, next) => {
   upload.fields([
     { name: "imagen", maxCount: 1 },
     { name: "archivosModulo", maxCount: 10 },
-  ]),
+  ])(req, res, (err) => {
+    if (err) {
+      if (err.message === "Tipo de archivo no permitido") {
+        return res.status(400).json({ mensaje: err.message });
+      }
+      return res.status(500).json({ mensaje: "Error en la carga del archivo" });
+    }
+    next();
+  });
+};
+
+// Controlador para crear curso
+exports.crearCurso = [
+  uploadMiddleware,
   async (req, res) => {
     try {
       const imagenFile = req.files["imagen"]?.[0];
@@ -149,7 +163,7 @@ exports.crearCurso = [
         fechaInicio,
         fechaTermino,
         dirigidoA,
-        "estado": "pendiente"
+        estado: "pendiente"
       };
 
       console.log("Guardando curso:", JSON.stringify(curso, null, 2));
@@ -493,10 +507,7 @@ exports.obtenerProgresoModulo = async (req, res) => {
 
 // 🔄 Controlador para actualizar un curso
 exports.actualizarCurso = [
-  upload.fields([
-    { name: "imagen", maxCount: 1 },
-    { name: "archivosModulo", maxCount: 10 },
-  ]),
+  uploadMiddleware,
   async (req, res) => {
     const { cursoId } = req.params;
 
