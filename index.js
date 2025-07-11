@@ -3,30 +3,39 @@ const express = require('express');
 const app = express();
 const cors = require('cors');
 const path = require('path');
-const authRoutes = require('./src/routes/authRoutes');// Ruta para usuarios
-const mailRoutes = require('./src/routes/mailRoutes');// Ruta para los correos
-const bookRoutes = require('./src/routes/bookRoutes');// Ruta para libros
-const cursosRoutes = require("./src/routes/cursosRoutes");// Ruta para cursos
 
+const authRoutes = require('./src/routes/authRoutes'); // Ruta para usuarios
+const mailRoutes = require('./src/routes/mailRoutes'); // Ruta para los correos
+const bookRoutes = require('./src/routes/bookRoutes'); // Ruta para libros
+const cursosRoutes = require("./src/routes/cursosRoutes"); // Ruta para cursos
+
+// Configuración CORS
 app.use(cors({
-  origin: ['http://localhost:5173', 'https://greenpark-0ua6-backend.onrender.com'], // la URL de tu frontend
+  origin: ['http://localhost:5173', 'https://greenpark-yjxi.onrender.com', ], 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true // si usas cookies o autenticación basada en credenciales
+  credentials: true
 }));
 
-
+// Middleware para parsear JSON
 app.use(express.json());
 
-// Ruta pública para acceder a los PDFs subidos
+// Ruta pública para acceder a PDFs u otros archivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Rutas
+app.use('/api/auth', authRoutes);
+app.use('/api/mail', mailRoutes);
+app.use('/api/books', bookRoutes);
+app.use('/api/cursos', cursosRoutes);
 
-app.use('/api/auth', authRoutes);// Ruta para usuarios
-app.use('/api/mail', mailRoutes);// Ruta para los correos
-app.use('/api/books', bookRoutes);// Ruta para libros
-app.use("/api/cursos", cursosRoutes);// Ruta para cursos
+// Middleware para loguear peticiones (opcional para debug)
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
+});
 
+// Puerto y servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
