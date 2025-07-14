@@ -40,3 +40,10 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
+
+app.use((err, req, res, next) => {
+  console.error("Error capturado por middleware:", err);
+  res.status(500).json({ mensaje: "Error interno del servidor", error: err.message });
+});
+
+

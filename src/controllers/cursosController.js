@@ -519,8 +519,11 @@ exports.actualizarCurso = [
         return res.status(404).json({ mensaje: "Curso no encontrado" });
       }
 
+      const cursoActual = cursoSnap.data();
+
+      // Procesar imagen (subir nueva o mantener la existente)
       const imagenFile = req.files?.["imagen"]?.[0];
-      let imagenUrl = cursoSnap.data().imagenUrl;
+      let imagenUrl = cursoActual.imagenUrl || "";
 
       if (imagenFile) {
         const imagenResult = await new Promise((resolve, reject) => {
@@ -533,10 +536,10 @@ exports.actualizarCurso = [
           );
           stream.end(imagenFile.buffer);
         });
-
         imagenUrl = imagenResult.secure_url;
       }
 
+      // Parsear campos JSON
       let herramientas = [];
       let loAprenderan = [];
       let modulos = [];
@@ -545,6 +548,7 @@ exports.actualizarCurso = [
       try { loAprenderan = JSON.parse(req.body.loAprenderan || "[]"); } catch {}
       try { modulos = JSON.parse(req.body.modulos || "[]"); } catch {}
 
+      // Validar enlaces en modulos igual que en crear
       modulos = modulos.map(modulo => {
         if (!Array.isArray(modulo.enlaces)) {
           modulo.enlaces = [];
@@ -556,21 +560,35 @@ exports.actualizarCurso = [
         return modulo;
       });
 
+      // Validar dirigidoA igual que en crear
       let dirigidoA = (req.body.dirigidoA || "").trim().toLowerCase();
       const opcionesValidas = ["apoderado", "estudiante", "docente"];
       if (!opcionesValidas.includes(dirigidoA)) {
         dirigidoA = req.body.dirigidoA || "";
       }
 
+      // Validar duración en horas igual que en crear
       let duracionHoras = parseInt(req.body.duracionHoras, 10);
       if (isNaN(duracionHoras) || duracionHoras < 0) {
         duracionHoras = 0;
       }
 
-      const fechaInicio = req.body.fechaInicio ? new Date(req.body.fechaInicio) : null;
-      const fechaTermino = req.body.fechaTermino ? new Date(req.body.fechaTermino) : null;
+      // Parsear fechas igual que en crear
+      let fechaInicio = null;
+      if (req.body.fechaInicio && req.body.fechaInicio.trim() !== "") {
+        const dInicio = new Date(req.body.fechaInicio);
+        fechaInicio = isNaN(dInicio.getTime()) ? null : dInicio;
+      }
 
-      const archivosModulo = [];
+      let fechaTermino = null;
+      if (req.body.fechaTermino && req.body.fechaTermino.trim() !== "") {
+        const dTermino = new Date(req.body.fechaTermino);
+        fechaTermino = isNaN(dTermino.getTime()) ? null : dTermino;
+      }
+
+      // Subir nuevos archivos de módulos y agregar a los existentes
+      let archivosModulo = cursoActual.archivosModulo || [];
+
       if (req.files["archivosModulo"]) {
         for (const file of req.files["archivosModulo"]) {
           const result = await new Promise((resolve, reject) => {
@@ -595,6 +613,7 @@ exports.actualizarCurso = [
         }
       }
 
+      // Construir datos actualizados igual que en crear
       const datosActualizados = {
         titulo: req.body.titulo || "",
         imagenUrl,
@@ -619,3 +638,150 @@ exports.actualizarCurso = [
     }
   }
 ];
+
+exports.registrarParticipanteCurso = async (req, res) => {
+  const { cursoId } = req.params;
+  const usuarioId = req.user.id;
+
+  if (!cursoId) {
+    return res.status(400).json({ mensaje: "ID de curso es requerido" });
+  }
+
+  try {
+    const participanteRef = db
+      .collection("cursos")
+      .doc(cursoId)
+      .collection("usuariosCurso")
+      .doc(usuarioId);
+
+    const participanteDoc = await participanteRef.get();
+
+    if (participanteDoc.exists) {
+      return res.status(200).json({ mensaje: "Participante ya registrado" });
+    }
+
+    await participanteRef.set({
+      usuarioId,
+      registradoEn: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.status(201).json({ mensaje: "Participante registrado con éxito" });
+  } catch (error) {
+    console.error("Error al registrar participante:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
+
+exports.obtenerCantidadParticipantes = async (req, res) => {
+  const { cursoId } = req.params;
+
+  if (!cursoId) {
+    return res.status(400).json({ mensaje: "ID de curso es requerido" });
+  }
+
+  try {
+    const participantesSnapshot = await db
+      .collection("cursos")
+      .doc(cursoId)
+      .collection("usuariosCurso")
+      .get();
+
+    console.log("Participantes IDs:", participantesSnapshot.docs.map(doc => doc.id));
+
+    const cantidad = participantesSnapshot.size; // número de documentos
+
+    res.status(200).json({ cursoId, cantidadParticipantes: cantidad });
+  } catch (error) {
+    console.error("Error al obtener cantidad de participantes:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
+
+exports.obtenerCantidadParticipantes = async (req, res) => {
+  const { cursoId } = req.params;
+
+  if (!cursoId) {
+    return res.status(400).json({ mensaje: "ID de curso es requerido" });
+  }
+
+  try {
+    const participantesSnapshot = await db
+      .collection("cursos")
+      .doc(cursoId)
+      .collection("usuariosCurso")
+      .get();
+
+    console.log("Participantes IDs:", participantesSnapshot.docs.map(doc => doc.id));
+
+    const cantidad = participantesSnapshot.size; // número de documentos
+
+    res.status(200).json({ cursoId, cantidadParticipantes: cantidad });
+  } catch (error) {
+    console.error("Error al obtener cantidad de participantes:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
+
+exports.obtenerParticipantesCurso = async (req, res) => {
+  const { cursoId } = req.params;
+
+  if (!cursoId) {
+    return res.status(400).json({ mensaje: "ID de curso es requerido" });
+  }
+
+  try {
+    const participantesSnapshot = await db
+      .collection("cursos")
+      .doc(cursoId)
+      .collection("usuariosCurso")
+      .get();
+
+    if (participantesSnapshot.empty) {
+      return res.status(200).json({ participantes: [] });
+    }
+
+    // Para cada participante, consulta su info en "users"
+    const participantes = await Promise.all(
+      participantesSnapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        const usuarioId = data.usuarioId;
+
+        // Aquí busca en la colección users por usuarioId
+        const usuarioDoc = await db.collection("users").doc(usuarioId).get();
+        const usuarioData = usuarioDoc.exists ? usuarioDoc.data() : {};
+
+        return {
+          id: doc.id,
+          nombre: usuarioData.nombre || "Sin nombre",
+          correo: usuarioData.correo || "Sin correo",
+          registradoEn: data.registradoEn?.toDate?.() || null,
+        };
+      })
+    );
+
+    res.status(200).json({ participantes });
+  } catch (error) {
+    console.error("Error al obtener participantes del curso:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
+
+
+
+exports.listarUsuarios = async (req, res) => {
+  try {
+    const usuariosSnapshot = await db.collection("users").get();
+    const usuarios = usuariosSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    res.status(200).json({ usuarios });
+  } catch (error) {
+    console.error("Error al obtener usuarios:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
+
+
+
+
