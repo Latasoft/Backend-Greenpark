@@ -1,6 +1,6 @@
 // middlewares/authenticate.js
 const jwt = require('jsonwebtoken');
-const SECRET_KEY = 'clave_secreta_segura';
+const SECRET_KEY = process.env.JWT_SECRET || 'clave_secreta_segura';
 
 module.exports = (req, res, next) => {
   const authHeader = req.headers.authorization;
