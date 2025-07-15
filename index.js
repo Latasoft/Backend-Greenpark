@@ -8,8 +8,8 @@ const authRoutes = require('./src/routes/authRoutes'); // Ruta para usuarios
 const mailRoutes = require('./src/routes/mailRoutes'); // Ruta para los correos
 const bookRoutes = require('./src/routes/bookRoutes'); // Ruta para libros
 const cursosRoutes = require("./src/routes/cursosRoutes"); // Ruta para cursos
+const messagesRoutes = require('./src/routes/messagesRoutes');
 
-// Configuración CORS
 app.use(cors({
   origin: ['http://localhost:5173', 'https://greenpark-yjxi.onrender.com', ], 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -28,6 +28,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/mail', mailRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/cursos', cursosRoutes);
+app.use('/api/mensajes', messagesRoutes);
+
+
 
 // Middleware para loguear peticiones (opcional para debug)
 app.use((req, res, next) => {
