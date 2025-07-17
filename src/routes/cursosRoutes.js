@@ -15,6 +15,7 @@ const {
   registrarParticipanteCurso,
   obtenerCantidadParticipantes,
   listarUsuarios,
+  obtenerCursosPublicoPorTipo,
 } = require("../controllers/cursosController");
 
 const authenticate = require("../middlewares/authenticate");
@@ -23,6 +24,9 @@ const authenticate = require("../middlewares/authenticate");
 
 // Obtener lista completa de cursos (sin autenticación)
 router.get("/lista", obtenerCursos);
+
+// Obtener cursos por tipo
+router.get('/publico/:tipo', obtenerCursosPublicoPorTipo);
 
 // Obtener cursos con progreso para usuario autenticado
 router.get("/usuario/progreso", authenticate, obtenerCursosUsuario);

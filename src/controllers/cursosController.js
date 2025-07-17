@@ -766,8 +766,6 @@ exports.obtenerParticipantesCurso = async (req, res) => {
   }
 };
 
-
-
 exports.listarUsuarios = async (req, res) => {
   try {
     const usuariosSnapshot = await db.collection("users").get();
@@ -782,6 +780,31 @@ exports.listarUsuarios = async (req, res) => {
   }
 };
 
+//cursos por tipo
+exports.obtenerCursosPublicoPorTipo = async (req, res) => {
+  const { tipo } = req.params;
 
+  if (!["docentes", "estudiantes", "comunidad"].includes(tipo)) {
+    return res.status(400).json({ mensaje: "Tipo inválido" });
+  }
+
+  try {
+    const snapshot = await db
+      .collection("cursos")
+      .where("publicado", "==", true)
+      .where("dirigidoA", "==", tipo)
+      .get();
+
+    const cursos = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.status(200).json(cursos);
+  } catch (error) {
+    console.error("Error al obtener cursos por tipo:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
 
 
