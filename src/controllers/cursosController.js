@@ -784,14 +784,14 @@ exports.listarUsuarios = async (req, res) => {
 exports.obtenerCursosPublicoPorTipo = async (req, res) => {
   const { tipo } = req.params;
 
-  if (!["docentes", "estudiantes", "comunidad"].includes(tipo)) {
+  if (!["docente", "estudiante", "comunidad"].includes(tipo)) {
     return res.status(400).json({ mensaje: "Tipo inválido" });
   }
 
   try {
     const snapshot = await db
       .collection("cursos")
-      .where("publicado", "==", true)
+      .where("estado", "==", "publicado")  // <-- cambiar aquí
       .where("dirigidoA", "==", tipo)
       .get();
 
@@ -806,5 +806,9 @@ exports.obtenerCursosPublicoPorTipo = async (req, res) => {
     res.status(500).json({ mensaje: "Error interno del servidor" });
   }
 };
+
+
+
+
 
 
