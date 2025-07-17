@@ -104,7 +104,7 @@ exports.crearCurso = [
       });
 
       // Validar dirigidoA (permitir aunque no esté en la lista)
-      const opcionesValidas = ["apoderado", "estudiante", "docente"];
+      const opcionesValidas = ["comunidad", "estudiante", "docente"];
       let dirigidoA = (req.body.dirigidoA || "").trim().toLowerCase();
       if (!opcionesValidas.includes(dirigidoA)) {
         console.warn("Valor inválido para dirigidoA:", req.body.dirigidoA);
