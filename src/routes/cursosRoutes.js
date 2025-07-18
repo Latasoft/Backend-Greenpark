@@ -16,6 +16,7 @@ const {
   obtenerCantidadParticipantes,
   listarUsuarios,
   obtenerCursosPublicoPorTipo,
+  actualizarProgresoCurso, // 🔥 Agregado
 } = require("../controllers/cursosController");
 
 const authenticate = require("../middlewares/authenticate");
@@ -33,6 +34,12 @@ router.get("/usuario/progreso", authenticate, obtenerCursosUsuario);
 
 // Obtener lista de usuarios (sin conflicto con :cursoId)
 router.get("/usuarios", listarUsuarios);
+
+// Actualizar progreso de usuario en curso (debe ir antes del :cursoId general)
+router.post("/:cursoId/usuarios/:usuarioId/progreso", authenticate, actualizarProgresoCurso);
+
+router.get("/usuario/:usuarioId/progreso", authenticate, obtenerCursosUsuario);
+
 
 // Rutas con parámetros dinámicos después
 
@@ -63,7 +70,7 @@ router.post("/", crearCurso);
 // Eliminar curso
 router.delete("/:cursoId", eliminarCurso);
 
-// Ruta genérica para obtener un curso por su ID (al final)
+// Ruta genérica para obtener un curso por su ID (esta debe ir al final)
 router.get("/:cursoId", obtenerCurso);
 
 module.exports = router;
