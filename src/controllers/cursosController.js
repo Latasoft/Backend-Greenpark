@@ -808,6 +808,78 @@ exports.obtenerCursosPublicoPorTipo = async (req, res) => {
   }
 };
 
+exports.obtenerCursosUsuario = async (req, res) => {
+  const { usuarioId } = req.params;
+
+  try {
+    const cursosSnapshot = await db.collection('cursos').get();
+    const cursosInscritos = [];
+
+    for (const cursoDoc of cursosSnapshot.docs) {
+      const cursoId = cursoDoc.id;
+
+      const usuarioCursoRef = db
+        .collection('cursos')
+        .doc(cursoId)
+        .collection('usuariosCurso')
+        .doc(usuarioId);
+
+      const usuarioCursoDoc = await usuarioCursoRef.get();
+
+      if (usuarioCursoDoc.exists) {
+        const cursoData = cursoDoc.data();
+        const progreso = usuarioCursoDoc.data().progreso ?? 0;
+
+        cursosInscritos.push({
+          id: cursoId,
+          nombre: cursoData.titulo || 'Sin título',
+          duracion: cursoData.duracionHoras || 0,
+          descripcion: cursoData.descripcion || '',
+          progreso,
+        });
+      }
+    }
+
+    return res.status(200).json(cursosInscritos);
+  } catch (error) {
+    console.error('Error al obtener cursos del usuario:', error);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+exports.actualizarProgresoCurso = async (req, res) => {
+  const { cursoId, usuarioId } = req.params;
+  const { progreso } = req.body;
+
+  console.log("Actualizar progreso - Params:", { cursoId, usuarioId });
+  console.log("Actualizar progreso - Body:", req.body);
+
+  if (typeof progreso !== 'number' || progreso < 0 || progreso > 100) {
+    return res.status(400).json({ mensaje: 'Progreso inválido. Debe ser un número entre 0 y 100.' });
+  }
+
+  try {
+    const usuarioCursoRef = db
+      .collection('cursos')
+      .doc(cursoId)
+      .collection('usuariosCurso')
+      .doc(usuarioId);
+
+    await usuarioCursoRef.set(
+      { progreso, actualizadoEn: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    const updatedDoc = await usuarioCursoRef.get();
+    console.log("Documento actualizado:", updatedDoc.data());
+
+    return res.status(200).json({ mensaje: 'Progreso actualizado correctamente' });
+  } catch (error) {
+    console.error('Error al actualizar progreso:', error);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
 
 
 

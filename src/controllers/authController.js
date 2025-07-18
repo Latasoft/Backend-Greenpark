@@ -222,3 +222,48 @@ exports.updateUserProfile = async (req, res) => {
     res.status(500).json({ message: 'Error al actualizar perfil' });
   }
 };
+
+exports.obtenerCursosUsuario = async (req, res) => {
+  const { usuarioId } = req.params;
+
+  try {
+    const cursosSnapshot = await db.collection('cursos').get();
+    const cursosInscritos = [];
+
+    for (const cursoDoc of cursosSnapshot.docs) {
+      const cursoId = cursoDoc.id;
+
+      const usuarioCursoRef = db
+        .collection('cursos')
+        .doc(cursoId)
+        .collection('usuariosCurso')
+        .doc(usuarioId);
+
+      const usuarioCursoDoc = await usuarioCursoRef.get();
+
+      if (usuarioCursoDoc.exists) {
+        const cursoData = cursoDoc.data();
+        const progreso = usuarioCursoDoc.data().progreso ?? 0;
+
+        // Debug: ver qué campos tiene cursoData
+        console.log('cursoData:', cursoData);
+
+        cursosInscritos.push({
+          id: cursoId,
+          nombre: cursoData.titulo || 'Sin título',
+          duracion: cursoData.duracionHoras || 0,
+          descripcion: cursoData.descripcion || '',
+          progreso,
+        });
+      }
+    }
+
+    return res.status(200).json(cursosInscritos);
+  } catch (error) {
+    console.error('Error al obtener cursos del usuario:', error);
+    return res.status(500).json({ mensaje: 'Error interno del servidor' });
+  }
+};
+
+
+
