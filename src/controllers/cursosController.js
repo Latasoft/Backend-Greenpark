@@ -166,6 +166,7 @@ exports.crearCurso = [
         estado: "pendiente"
       };
 
+      
       console.log("Guardando curso:", JSON.stringify(curso, null, 2));
 
       const cursoRef = await db.collection("cursos").add(curso);
