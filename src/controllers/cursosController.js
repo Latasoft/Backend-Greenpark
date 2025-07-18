@@ -166,7 +166,7 @@ exports.crearCurso = [
         estado: "pendiente"
       };
 
-      
+
       console.log("Guardando curso:", JSON.stringify(curso, null, 2));
 
       const cursoRef = await db.collection("cursos").add(curso);
@@ -563,7 +563,7 @@ exports.actualizarCurso = [
 
       // Validar dirigidoA igual que en crear
       let dirigidoA = (req.body.dirigidoA || "").trim().toLowerCase();
-      const opcionesValidas = ["apoderado", "estudiante", "docente"];
+      const opcionesValidas = ["comunidad", "estudiante", "docente"];
       if (!opcionesValidas.includes(dirigidoA)) {
         dirigidoA = req.body.dirigidoA || "";
       }

@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const { db } = require('../config/firebase');
 
 const jwt = require('jsonwebtoken');
-const ROLES_VALIDOS = ['admin', 'docente', 'estudiante', 'apoderado'];
+const ROLES_VALIDOS = ['admin', 'docente', 'estudiante', 'comunidad'];
 const SECRET_KEY = 'clave_secreta_segura';
 
 // regitro de usuario
@@ -10,9 +10,9 @@ exports.register = async (req, res) => {
   try {
     const { nombre, apellido, correo, fechaNacimiento, rol, password, confirmarPassword } = req.body;
 
-    const ROLES_VALIDOS = ['admin', 'docente', 'estudiante', 'apoderado'];
+    const ROLES_VALIDOS = ['admin', 'docente', 'estudiante', 'comunidad'];
     if (!ROLES_VALIDOS.includes(rol)) {
-      return res.status(400).json({ message: 'Rol inválido. Los roles válidos son admin, docente, estudiante, apoderado' });
+      return res.status(400).json({ message: 'Rol inválido. Los roles válidos son admin, docente, estudiante, comunidad' });
     }
 
     if (password !== confirmarPassword) {
