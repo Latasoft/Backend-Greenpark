@@ -16,6 +16,8 @@ router.put('/approve/:userId', isAdmin, authController.approveUser);
 
 // Al final, rutas con parámetros dinámicos menos específicos
 router.get('/:usuarioId/cursos-inscritos', authController.obtenerCursosUsuario);
+router.delete('/usuario/cursos-inscritos/:cursoId', authenticate, authController.eliminarCursoUsuario);
+
 
 
 

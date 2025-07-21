@@ -265,5 +265,34 @@ exports.obtenerCursosUsuario = async (req, res) => {
   }
 };
 
+exports.eliminarCursoUsuario = async (req, res) => {
+  try {
+    const usuarioId = req.user.id; // <-- aquí el cambio importante
+    const { cursoId } = req.params;
+
+    if (!cursoId) {
+      return res.status(400).json({ mensaje: "Falta el ID del curso." });
+    }
+
+    const usuarioCursoRef = db
+      .collection("cursos")
+      .doc(cursoId)
+      .collection("usuariosCurso")
+      .doc(usuarioId);
+
+    const doc = await usuarioCursoRef.get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ mensaje: "Inscripción no encontrada." });
+    }
+
+    await usuarioCursoRef.delete();
+
+    return res.status(200).json({ mensaje: "Inscripción eliminada correctamente." });
+  } catch (error) {
+    console.error("Error al eliminar la inscripción:", error);
+    return res.status(500).json({ mensaje: "Error interno del servidor." });
+  }
+};
 
 
