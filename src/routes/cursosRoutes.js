@@ -16,7 +16,8 @@ const {
   obtenerCantidadParticipantes,
   listarUsuarios,
   obtenerCursosPublicoPorTipo,
-  actualizarProgresoCurso, // 🔥 Agregado
+  actualizarProgresoCurso,
+  getTopCursos // ✅ Nuevo
 } = require("../controllers/cursosController");
 
 const authenticate = require("../middlewares/authenticate");
@@ -34,6 +35,9 @@ router.get('/usuario-id/:usuarioId', authenticate, obtenerCursosUsuario);
 
 // Obtener lista de usuarios (sin conflicto con :cursoId)
 router.get("/usuarios", listarUsuarios);
+
+// Obtener los 3 cursos con más participantes
+router.get("/destacados", getTopCursos);
 
 // Actualizar progreso de usuario en curso (debe ir antes del :cursoId general)
 router.post("/:cursoId/usuarios/:usuarioId/progreso", authenticate, actualizarProgresoCurso);

@@ -880,6 +880,37 @@ exports.actualizarProgresoCurso = async (req, res) => {
   }
 };
 
+exports.getTopCursos = async (req, res) => {
+  try {
+    const cursosSnapshot = await db.collection("cursos").get();
+
+    const cursosConConteo = await Promise.all(
+      cursosSnapshot.docs.map(async (cursoDoc) => {
+        const cursoData = cursoDoc.data();
+        const usuariosSnapshot = await db
+          .collection("cursos")
+          .doc(cursoDoc.id)
+          .collection("usuariosCurso")
+          .get();
+
+        return {
+          id: cursoDoc.id,
+          ...cursoData,
+          participantes: usuariosSnapshot.size,
+        };
+      })
+    );
+
+    const topCursos = cursosConConteo
+      .sort((a, b) => b.participantes - a.participantes)
+      .slice(0, 10);
+
+    res.status(200).json({ cursos: topCursos });
+  } catch (error) {
+    console.error("Error al obtener cursos destacados:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
 
 
 
