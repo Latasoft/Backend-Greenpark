@@ -30,7 +30,7 @@ router.get("/lista", obtenerCursos);
 router.get('/publico/:tipo', obtenerCursosPublicoPorTipo);
 
 // Obtener cursos con progreso para usuario autenticado
-router.get("/usuario/progreso", authenticate, obtenerCursosUsuario);
+router.get('/usuario-id/:usuarioId', authenticate, obtenerCursosUsuario);
 
 // Obtener lista de usuarios (sin conflicto con :cursoId)
 router.get("/usuarios", listarUsuarios);
@@ -39,9 +39,6 @@ router.get("/usuarios", listarUsuarios);
 router.post("/:cursoId/usuarios/:usuarioId/progreso", authenticate, actualizarProgresoCurso);
 
 router.get("/usuario/:usuarioId/progreso", authenticate, obtenerCursosUsuario);
-
-
-// Rutas con parámetros dinámicos después
 
 // Registrar participante autenticado en un curso
 router.post("/:cursoId/registrarParticipante", authenticate, registrarParticipanteCurso);
