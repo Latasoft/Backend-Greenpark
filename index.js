@@ -13,10 +13,11 @@ const messagesRoutes = require('./src/routes/messagesRoutes');
 
 // Configuración CORS
 const allowedOrigins = [
-  'http://localhost:5174',
+  'http://localhost:5173',
   'https://greenpark-yjxi.onrender.com',
   'https://greenpark1.netlify.app',
-  'https://greenparkacademia.com'
+  'https://greenparkacademia.com',
+  'http://localhost:5174'
 ];
 
 app.use(cors({

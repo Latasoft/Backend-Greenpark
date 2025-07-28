@@ -1,5 +1,7 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
+const uploadMiddleware = require('../middlewares/multerConfig');
+const { actualizarCurso } = require('../controllers/cursosController');
 
 const {
   crearCurso,
@@ -11,59 +13,62 @@ const {
   registrarAccesoQuiz,
   publicarCurso,
   obtenerParticipantesCurso,
-  actualizarCurso,
+  
   registrarParticipanteCurso,
   obtenerCantidadParticipantes,
   listarUsuarios,
   obtenerCursosPublicoPorTipo,
   actualizarProgresoCurso,
-  getTopCursos // ✅ Nuevo
+  getTopCursos, // Cursos destacados
 } = require("../controllers/cursosController");
 
 const authenticate = require("../middlewares/authenticate");
 
-// Rutas estáticas / fijas primero
+// Rutas públicas
 
 // Obtener lista completa de cursos (sin autenticación)
 router.get("/lista", obtenerCursos);
 
-// Obtener cursos por tipo
-router.get('/publico/:tipo', obtenerCursosPublicoPorTipo);
+// Obtener cursos por tipo (público)
+router.get("/publico/:tipo", obtenerCursosPublicoPorTipo);
 
-// Obtener cursos con progreso para usuario autenticado
-router.get('/usuario-id/:usuarioId', authenticate, obtenerCursosUsuario);
-
-// Obtener lista de usuarios (sin conflicto con :cursoId)
+// Obtener lista de usuarios (sin autenticación)
 router.get("/usuarios", listarUsuarios);
 
 // Obtener los 3 cursos con más participantes
 router.get("/destacados", getTopCursos);
 
-// Actualizar progreso de usuario en curso (debe ir antes del :cursoId general)
+// Rutas que requieren autenticación
+
+// Obtener cursos con progreso para usuario autenticado
+router.get("/usuario-id/:usuarioId", authenticate, obtenerCursosUsuario);
+
+// Actualizar progreso de usuario en curso
 router.post("/:cursoId/usuarios/:usuarioId/progreso", authenticate, actualizarProgresoCurso);
 
+// Obtener progreso de usuario (autenticado)
 router.get("/usuario/:usuarioId/progreso", authenticate, obtenerCursosUsuario);
 
 // Registrar participante autenticado en un curso
 router.post("/:cursoId/registrarParticipante", authenticate, registrarParticipanteCurso);
 
-// Obtener lista de participantes de un curso (autenticado)
+// Obtener participantes de un curso
 router.get("/:cursoId/participantes", authenticate, obtenerParticipantesCurso);
 
-// Obtener cantidad de participantes de un curso (autenticado)
+// Obtener cantidad de participantes en un curso
 router.get("/:cursoId/cantidadParticipantes", authenticate, obtenerCantidadParticipantes);
 
-// Registrar acceso a un módulo/quiz
+// Registrar acceso a módulo/quiz (no requiere autenticación explícita)
 router.post("/:cursoId/modulos/:moduloIndex/acceso", registrarAccesoQuiz);
 
-// Responder quiz de un módulo (autenticado)
+// Responder quiz de un módulo (requiere autenticación)
 router.post("/:cursoId/modulos/:moduloIndex/responder", authenticate, responderQuiz);
 
-// Actualizar curso (autenticado)
-router.put("/:cursoId", authenticate, actualizarCurso);
+// Actualizar curso (requiere autenticación y manejo de archivos)
+router.put('/:cursoId', uploadMiddleware, actualizarCurso);
 
-// Publicar curso (autenticado)
-router.put("/:id/publicar", publicarCurso);
+// Publicar curso
+router.put("/:id/publicar", authenticate, publicarCurso);
 
 // Crear nuevo curso
 router.post("/", crearCurso);
@@ -71,7 +76,7 @@ router.post("/", crearCurso);
 // Eliminar curso
 router.delete("/:cursoId", eliminarCurso);
 
-// Ruta genérica para obtener un curso por su ID (esta debe ir al final)
+// Obtener curso por ID (debe ir al final para evitar conflictos)
 router.get("/:cursoId", obtenerCurso);
 
 module.exports = router;
