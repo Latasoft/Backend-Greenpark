@@ -1,7 +1,6 @@
 const admin = require("firebase-admin");
 const multer = require("multer");
-const cloudinary = require("../utils/cloudinary");
-
+const cloudinary = require('../cloud/cloudinaryConfig');
 const db = admin.firestore();
 
 // Función auxiliar para parsear fechas seguras
@@ -507,91 +506,109 @@ exports.obtenerProgresoModulo = async (req, res) => {
 };
 
 // 🔄 Controlador para actualizar un curso
-exports.actualizarCurso = [
-  uploadMiddleware,
-  async (req, res) => {
-    const { cursoId } = req.params;
+exports.actualizarCurso = async (req, res) => {
+  const { cursoId } = req.params;
+
+  if (!cursoId || typeof cursoId !== "string") {
+    return res.status(400).json({ mensaje: "ID de curso inválido" });
+  }
+
+  console.log("========== INICIO ACTUALIZACIÓN CURSO ==========");
+  console.log("req.body:", req.body);
+  console.log("req.files:", req.files);
+  console.log("IMAGEN recibida:", req.files?.imagen?.[0]?.originalname);
+  console.log("ARCHIVOS MODULO recibidos:", req.files?.archivosModulo?.length);
+
+  try {
+    // Función que convierte string a Timestamp o null
+    const parseFecha = (fechaStr) => {
+      if (!fechaStr) return null;
+      const d = new Date(fechaStr);
+      if (isNaN(d.getTime())) return null;
+      return admin.firestore.Timestamp.fromDate(d);
+    };
+
+    // Subir imagen a Cloudinary si existe
+    let imagenUrl;
+    const imagenFile = req.files?.imagen?.[0];
+    if (imagenFile) {
+      const imagenResult = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { resource_type: "image", folder: "cursos" },
+          (error, result) => {
+            if (error) {
+              console.error("❌ Error al subir imagen:", error);
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          }
+        );
+        stream.end(imagenFile.buffer);
+      });
+      imagenUrl = imagenResult.secure_url;
+      console.log("✅ Imagen subida con éxito:", imagenUrl);
+    }
+
+    // Parsear campos JSON con try-catch
+    let herramientas = [];
+    let loAprenderan = [];
+    let modulos = [];
 
     try {
-      const cursoRef = db.collection("cursos").doc(cursoId);
-      const cursoSnap = await cursoRef.get();
+      herramientas = JSON.parse(req.body.herramientas || "[]");
+    } catch (e) {
+      console.error("Error parseando herramientas:", e);
+    }
 
-      if (!cursoSnap.exists) {
-        return res.status(404).json({ mensaje: "Curso no encontrado" });
+    try {
+      loAprenderan = JSON.parse(req.body.loAprenderan || "[]");
+    } catch (e) {
+      console.error("Error parseando loAprenderan:", e);
+    }
+
+    try {
+      modulos = JSON.parse(req.body.modulos || "[]");
+    } catch (e) {
+      console.error("Error parseando modulos:", e);
+    }
+
+    // Validar enlaces en módulos
+    modulos = modulos.map((modulo) => {
+      if (!Array.isArray(modulo.enlaces)) {
+        modulo.enlaces = [];
+      } else {
+        modulo.enlaces = modulo.enlaces.filter(
+          (enlace) =>
+            enlace &&
+            typeof enlace.nombre === "string" &&
+            typeof enlace.url === "string"
+        );
       }
+      return modulo;
+    });
 
-      const cursoActual = cursoSnap.data();
+    const opcionesValidas = ["comunidad", "estudiante", "docente"];
+    let dirigidoA = (req.body.dirigidoA || "").trim().toLowerCase();
+    if (!opcionesValidas.includes(dirigidoA)) {
+      dirigidoA = req.body.dirigidoA || "";
+    }
 
-      // Procesar imagen (subir nueva o mantener la existente)
-      const imagenFile = req.files?.["imagen"]?.[0];
-      let imagenUrl = cursoActual.imagenUrl || "";
+    let duracionHoras = parseInt(req.body.duracionHoras, 10);
+    if (isNaN(duracionHoras) || duracionHoras < 0) {
+      duracionHoras = 0;
+    }
 
-      if (imagenFile) {
-        const imagenResult = await new Promise((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
-            { resource_type: "image", folder: "cursos" },
-            (error, result) => {
-              if (error) reject(error);
-              else resolve(result);
-            }
-          );
-          stream.end(imagenFile.buffer);
-        });
-        imagenUrl = imagenResult.secure_url;
-      }
+    const fechaInicio = parseFecha(req.body.fechaInicio);
+    const fechaTermino = parseFecha(req.body.fechaTermino);
 
-      // Parsear campos JSON
-      let herramientas = [];
-      let loAprenderan = [];
-      let modulos = [];
-
-      try { herramientas = JSON.parse(req.body.herramientas || "[]"); } catch {}
-      try { loAprenderan = JSON.parse(req.body.loAprenderan || "[]"); } catch {}
-      try { modulos = JSON.parse(req.body.modulos || "[]"); } catch {}
-
-      // Validar enlaces en modulos igual que en crear
-      modulos = modulos.map(modulo => {
-        if (!Array.isArray(modulo.enlaces)) {
-          modulo.enlaces = [];
-        } else {
-          modulo.enlaces = modulo.enlaces.filter(enlace =>
-            enlace && typeof enlace.nombre === "string" && typeof enlace.url === "string"
-          );
-        }
-        return modulo;
-      });
-
-      // Validar dirigidoA igual que en crear
-      let dirigidoA = (req.body.dirigidoA || "").trim().toLowerCase();
-      const opcionesValidas = ["comunidad", "estudiante", "docente"];
-      if (!opcionesValidas.includes(dirigidoA)) {
-        dirigidoA = req.body.dirigidoA || "";
-      }
-
-      // Validar duración en horas igual que en crear
-      let duracionHoras = parseInt(req.body.duracionHoras, 10);
-      if (isNaN(duracionHoras) || duracionHoras < 0) {
-        duracionHoras = 0;
-      }
-
-      // Parsear fechas igual que en crear
-      let fechaInicio = null;
-      if (req.body.fechaInicio && req.body.fechaInicio.trim() !== "") {
-        const dInicio = new Date(req.body.fechaInicio);
-        fechaInicio = isNaN(dInicio.getTime()) ? null : dInicio;
-      }
-
-      let fechaTermino = null;
-      if (req.body.fechaTermino && req.body.fechaTermino.trim() !== "") {
-        const dTermino = new Date(req.body.fechaTermino);
-        fechaTermino = isNaN(dTermino.getTime()) ? null : dTermino;
-      }
-
-      // Subir nuevos archivos de módulos y agregar a los existentes
-      let archivosModulo = cursoActual.archivosModulo || [];
-
-      if (req.files["archivosModulo"]) {
-        for (const file of req.files["archivosModulo"]) {
+    // Subida de archivos de módulos si existen
+    const archivosModuloNuevos = [];
+    if (req.files?.archivosModulo) {
+      console.log("🟢 Comenzando carga de archivos módulo...");
+      for (const file of req.files.archivosModulo) {
+        console.log("→ Subiendo archivo:", file.originalname);
+        try {
           const result = await new Promise((resolve, reject) => {
             const stream = cloudinary.uploader.upload_stream(
               {
@@ -600,45 +617,78 @@ exports.actualizarCurso = [
                 public_id: file.originalname.split(".")[0],
               },
               (error, result) => {
-                if (error) reject(error);
-                else resolve(result);
+                if (error) {
+                  console.error("❌ Error subiendo archivo módulo:", error);
+                  reject(error);
+                } else {
+                  resolve(result);
+                }
               }
             );
             stream.end(file.buffer);
           });
 
-          archivosModulo.push({
+          archivosModuloNuevos.push({
             nombre: file.originalname,
             url: result.secure_url,
           });
+          console.log("✅ Archivo subido con éxito:", result.secure_url);
+        } catch (err) {
+          console.error("❌ Error crítico en archivo módulo:", err);
+          return res.status(500).json({ mensaje: "Error en la carga del archivo" });
         }
       }
-
-      // Construir datos actualizados igual que en crear
-      const datosActualizados = {
-        titulo: req.body.titulo || "",
-        imagenUrl,
-        herramientas,
-        loAprenderan,
-        duracionHoras,
-        bienvenida: req.body.bienvenida || "",
-        modulos,
-        archivosModulo,
-        fechaInicio,
-        fechaTermino,
-        dirigidoA,
-        actualizadoEn: admin.firestore.FieldValue.serverTimestamp(),
-      };
-
-      await cursoRef.update(datosActualizados);
-
-      res.status(200).json({ mensaje: "Curso actualizado correctamente" });
-    } catch (error) {
-      console.error("Error al actualizar curso:", error);
-      res.status(500).json({ mensaje: "Error al actualizar curso" });
     }
+
+    const cursoRef = admin.firestore().collection("cursos").doc(cursoId);
+    const cursoSnapshot = await cursoRef.get();
+
+    if (!cursoSnapshot.exists) {
+      return res.status(404).json({ mensaje: "Curso no encontrado" });
+    }
+
+    const cursoActual = cursoSnapshot.data();
+
+    // Preparar datos a actualizar - solo reemplaza si el valor enviado es válido (no vacío ni null)
+    const cursoActualizado = {
+      titulo:
+        typeof req.body.titulo === "string" && req.body.titulo.trim() !== ""
+          ? req.body.titulo
+          : cursoActual.titulo || "",
+      imagenUrl: imagenUrl || cursoActual.imagenUrl || "",
+      herramientas,
+      loAprenderan,
+      duracionHoras,
+      bienvenida:
+        typeof req.body.bienvenida === "string" && req.body.bienvenida.trim() !== ""
+          ? req.body.bienvenida
+          : cursoActual.bienvenida || "",
+      modulos,
+      archivosModulo: Array.isArray(cursoActual.archivosModulo)
+        ? [...cursoActual.archivosModulo, ...archivosModuloNuevos]
+        : archivosModuloNuevos,
+      fechaInicio,
+      fechaTermino,
+      dirigidoA,
+      actualizadoEn: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    console.log("📝 Datos a actualizar:", JSON.stringify(cursoActualizado, null, 2));
+
+    await cursoRef.update(cursoActualizado);
+
+    console.log("✅ Curso actualizado con éxito");
+    return res.status(200).json({ mensaje: "Curso actualizado con éxito" });
+  } catch (error) {
+    console.error("❌ Error general en actualización:", {
+      mensaje: error.message,
+      stack: error.stack,
+      error,
+    });
+    return res.status(500).json({ mensaje: "Error interno del servidor" });
   }
-];
+};
+
 
 exports.registrarParticipanteCurso = async (req, res) => {
   const { cursoId } = req.params;
