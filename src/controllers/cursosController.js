@@ -238,23 +238,38 @@ exports.obtenerCurso = async (req, res) => {
 
     const curso = cursoDoc.data();
 
-    // Contar accesos al quiz de este curso
-    const accesosSnapshot = await db.collection("accesosQuiz")
+    // Obtener los módulos desde la subcolección "modulos"
+    const modulosSnapshot = await db
+      .collection("cursos")
+      .doc(cursoId)
+      .collection("modulos")
+      .get();
+
+    const modulos = modulosSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Obtener accesos al quiz
+    const accesosSnapshot = await db
+      .collection("accesosQuiz")
       .where("cursoId", "==", cursoId)
       .get();
 
     const cantidadAccesosQuiz = accesosSnapshot.size;
 
-    res.status(200).json({ 
-      id: cursoDoc.id, 
+    res.status(200).json({
+      id: cursoDoc.id,
       ...curso,
-      cantidadAccesosQuiz  // aquí incluyes el conteo
+      modulos, // aquí sí se agregan los módulos reales con archivos
+      cantidadAccesosQuiz,
     });
   } catch (error) {
     console.error("Error al obtener curso:", error);
     res.status(500).send("Error interno del servidor");
   }
 };
+
 
 // Controlador para eliminar un curso por ID
 exports.eliminarCurso = async (req, res) => {
