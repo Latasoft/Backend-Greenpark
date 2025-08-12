@@ -58,16 +58,20 @@ const uploadMiddleware = (req, res, next) => {
 };
 
 // Controlador para crear curso
-exports.crearCurso = [
-  uploadMiddleware,
-  async (req, res) => {
-    try {
-      const imagenFile = req.files["imagen"]?.[0];
-      if (!imagenFile) {
-        return res.status(400).send("No se envió imagen del curso");
-      }
+exports.crearCurso = async (req, res) => {
+  try {
+    // Función para convertir fecha a Timestamp Firestore
+    const parseFecha = (fechaStr) => {
+      if (!fechaStr) return null;
+      const d = new Date(fechaStr);
+      if (isNaN(d.getTime())) return null;
+      return admin.firestore.Timestamp.fromDate(d);
+    };
 
-      // Subir imagen a Cloudinary
+    // Subir imagen si existe
+    let imagenUrl;
+    const imagenFile = req.files.find(f => f.fieldname === "imagen");
+    if (imagenFile) {
       const imagenResult = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           { resource_type: "image", folder: "cursos" },
@@ -78,108 +82,97 @@ exports.crearCurso = [
         );
         stream.end(imagenFile.buffer);
       });
-
-      // Parsear campos JSON
-      let herramientas = [];
-      let loAprenderan = [];
-      let modulos = [];
-
-      try { herramientas = JSON.parse(req.body.herramientas || "[]"); } catch { }
-      try { loAprenderan = JSON.parse(req.body.loAprenderan || "[]"); } catch { }
-      try { modulos = JSON.parse(req.body.modulos || "[]"); } catch { }
-
-      // Validar que cada módulo tenga arreglo enlaces con objetos válidos
-      modulos = modulos.map((modulo) => {
-        if (!Array.isArray(modulo.enlaces)) {
-          modulo.enlaces = [];
-        } else {
-          modulo.enlaces = modulo.enlaces.filter(enlace => {
-            return enlace
-              && typeof enlace.nombre === "string"
-              && typeof enlace.url === "string";
-          });
-        }
-        return modulo;
-      });
-
-      // Validar dirigidoA (permitir aunque no esté en la lista)
-      const opcionesValidas = ["comunidad", "estudiante", "docente"];
-      let dirigidoA = (req.body.dirigidoA || "").trim().toLowerCase();
-      if (!opcionesValidas.includes(dirigidoA)) {
-        console.warn("Valor inválido para dirigidoA:", req.body.dirigidoA);
-        dirigidoA = req.body.dirigidoA || ""; // aceptar aunque no esté validado
-      }
-
-      // Validar duración en horas
-      let duracionHoras = parseInt(req.body.duracionHoras, 10);
-      if (isNaN(duracionHoras) || duracionHoras < 0) {
-        console.warn("Valor inválido para duracionHoras:", req.body.duracionHoras);
-        duracionHoras = 0;
-      }
-
-      // Parsear fechas
-      const fechaInicio = req.body.fechaInicio ? new Date(req.body.fechaInicio) : null;
-      const fechaTermino = req.body.fechaTermino ? new Date(req.body.fechaTermino) : null;
-
-      // Subir archivos de módulos
-      const archivosModulo = [];
-
-      if (req.files["archivosModulo"]) {
-        for (const file of req.files["archivosModulo"]) {
-          const result = await new Promise((resolve, reject) => {
-            const stream = cloudinary.uploader.upload_stream(
-              {
-                resource_type: "raw",
-                folder: "modulos",
-                public_id: file.originalname.split(".")[0],
-              },
-              (error, result) => {
-                if (error) reject(error);
-                else resolve(result);
-              }
-            );
-            stream.end(file.buffer);
-          });
-
-          archivosModulo.push({
-            nombre: file.originalname,
-            url: result.secure_url,
-          });
-        }
-      }
-
-      // Crear objeto curso
-      const curso = {
-        titulo: req.body.titulo || "",
-        imagenUrl: imagenResult.secure_url,
-        herramientas,
-        loAprenderan,
-        duracionHoras,
-        bienvenida: req.body.bienvenida || "",
-        modulos,         
-        archivosModulo,
-        creadoEn: admin.firestore.FieldValue.serverTimestamp(),
-        fechaInicio,
-        fechaTermino,
-        dirigidoA,
-        estado: "pendiente"
-      };
-
-
-      console.log("Guardando curso:", JSON.stringify(curso, null, 2));
-
-      const cursoRef = await db.collection("cursos").add(curso);
-
-      res.status(201).json({
-        id: cursoRef.id,
-        mensaje: "Curso creado con éxito",
-      });
-    } catch (error) {
-      console.error("Error al crear curso:", error);
-      res.status(500).send("Error interno del servidor");
+      imagenUrl = imagenResult.secure_url;
     }
-  },
-];
+
+    // Parsear JSON
+    let herramientas = [];
+    let loAprenderan = [];
+    let modulos = [];
+
+    try { herramientas = JSON.parse(req.body.herramientas || "[]"); } catch {}
+    try { loAprenderan = JSON.parse(req.body.loAprenderan || "[]"); } catch {}
+    try { modulos = JSON.parse(req.body.modulos || "[]"); } catch {}
+
+    // Agrupar archivos de módulos según prefijo en fieldname
+    const archivosModuloNuevosPorModulo = {}; // { moduloIndex: [archivos] }
+
+    req.files.forEach((file) => {
+      if (file.fieldname === "imagen") return;
+
+      const match = file.fieldname.match(/^archivosModulo_(\d+)$/);
+      if (match) {
+        const index = match[1];
+        if (!archivosModuloNuevosPorModulo[index]) archivosModuloNuevosPorModulo[index] = [];
+        archivosModuloNuevosPorModulo[index].push(file);
+      }
+    });
+
+    // Subir archivos por módulo a Cloudinary
+    const archivosModuloNuevos = [];
+
+    for (const index in archivosModuloNuevosPorModulo) {
+      for (const file of archivosModuloNuevosPorModulo[index]) {
+        const result = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              resource_type: "raw",
+              folder: "modulos",
+              public_id: file.originalname.split(".")[0],
+              type: "authenticated", // privado
+            },
+            (error, uploadResult) => {
+              if (error) reject(error);
+              else resolve(uploadResult);
+            }
+          );
+          stream.end(file.buffer);
+        });
+
+        archivosModuloNuevos.push({
+          nombre: file.originalname,
+          url: result.secure_url,
+          public_id: result.public_id,   // <--- guardamos public_id
+          moduloIndex: parseInt(index),
+        });
+      }
+    }
+
+    // Agregar archivos a cada módulo, incluyendo public_id
+    archivosModuloNuevos.forEach(({ nombre, url, public_id, moduloIndex }) => {
+      if (!modulos[moduloIndex].archivos) modulos[moduloIndex].archivos = [];
+      modulos[moduloIndex].archivos.push({ nombre, url, public_id }); // <--- guardamos public_id aquí también
+    });
+
+    // Construir objeto curso
+    const cursoNuevo = {
+      titulo: typeof req.body.titulo === "string" && req.body.titulo.trim() !== "" ? req.body.titulo : "",
+      imagenUrl: imagenUrl || "",
+      herramientas,
+      loAprenderan,
+      duracionHoras: isNaN(parseInt(req.body.duracionHoras)) ? 0 : parseInt(req.body.duracionHoras),
+      bienvenida: typeof req.body.bienvenida === "string" && req.body.bienvenida.trim() !== "" ? req.body.bienvenida : "",
+      modulos,
+      archivosModulo: archivosModuloNuevos,
+      fechaInicio: parseFecha(req.body.fechaInicio),
+      fechaTermino: parseFecha(req.body.fechaTermino),
+      dirigidoA: req.body.dirigidoA || "",
+      creadoEn: admin.firestore.FieldValue.serverTimestamp(),
+      actualizadoEn: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    // Guardar en Firestore
+    const cursoRef = await admin.firestore().collection("cursos").add(cursoNuevo);
+
+    return res.status(201).json({ mensaje: "Curso creado con éxito", id: cursoRef.id });
+  } catch (error) {
+    console.error("Error en crearCurso:", error);
+    return res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
+
+
+
 // Para cambiar el estado de curso
 exports.publicarCurso = async (req, res) => {
   const { id } = req.params;
@@ -238,38 +231,17 @@ exports.obtenerCurso = async (req, res) => {
 
     const curso = cursoDoc.data();
 
-    // Obtener los módulos desde la subcolección "modulos"
-    const modulosSnapshot = await db
-      .collection("cursos")
-      .doc(cursoId)
-      .collection("modulos")
-      .get();
-
-    const modulos = modulosSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    // Obtener accesos al quiz
-    const accesosSnapshot = await db
-      .collection("accesosQuiz")
-      .where("cursoId", "==", cursoId)
-      .get();
-
-    const cantidadAccesosQuiz = accesosSnapshot.size;
-
+    // No consultar subcolección, solo devolver el campo modulos si existe
     res.status(200).json({
       id: cursoDoc.id,
       ...curso,
-      modulos, // aquí sí se agregan los módulos reales con archivos
-      cantidadAccesosQuiz,
+      modulos: curso.modulos || [],
     });
   } catch (error) {
     console.error("Error al obtener curso:", error);
     res.status(500).send("Error interno del servidor");
   }
 };
-
 
 // Controlador para eliminar un curso por ID
 exports.eliminarCurso = async (req, res) => {
@@ -522,20 +494,12 @@ exports.obtenerProgresoModulo = async (req, res) => {
 
 // 🔄 Controlador para actualizar un curso
 exports.actualizarCurso = async (req, res) => {
-  const { cursoId } = req.params;
-
-  if (!cursoId || typeof cursoId !== "string") {
-    return res.status(400).json({ mensaje: "ID de curso inválido" });
-  }
-
-  console.log("========== INICIO ACTUALIZACIÓN CURSO ==========");
-  console.log("req.body:", req.body);
-  console.log("req.files:", req.files);
-  console.log("IMAGEN recibida:", req.files?.imagen?.[0]?.originalname);
-  console.log("ARCHIVOS MODULO recibidos:", req.files?.archivosModulo?.length);
-
   try {
-    // Función que convierte string a Timestamp o null
+    const { cursoId } = req.params;
+    if (!cursoId || typeof cursoId !== "string") {
+      return res.status(400).json({ mensaje: "ID de curso inválido" });
+    }
+
     const parseFecha = (fechaStr) => {
       if (!fechaStr) return null;
       const d = new Date(fechaStr);
@@ -543,102 +507,66 @@ exports.actualizarCurso = async (req, res) => {
       return admin.firestore.Timestamp.fromDate(d);
     };
 
-    // Subir imagen a Cloudinary si existe
+    // Subir imagen principal si existe
     let imagenUrl;
-    const imagenFile = req.files?.imagen?.[0];
+    const imagenFile = req.files.find((f) => f.fieldname === "imagen");
     if (imagenFile) {
       const imagenResult = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
           { resource_type: "image", folder: "cursos" },
-          (error, result) => {
-            if (error) {
-              console.error("❌ Error al subir imagen:", error);
-              reject(error);
-            } else {
-              resolve(result);
-            }
-          }
+          (error, result) => error ? reject(error) : resolve(result)
         );
         stream.end(imagenFile.buffer);
       });
       imagenUrl = imagenResult.secure_url;
-      console.log("✅ Imagen subida con éxito:", imagenUrl);
     }
 
-    // Parsear campos JSON con try-catch
+    // Parsear arrays enviados como JSON
     let herramientas = [];
     let loAprenderan = [];
     let modulos = [];
 
-    try {
-      herramientas = JSON.parse(req.body.herramientas || "[]");
-    } catch (e) {
-      console.error("Error parseando herramientas:", e);
-    }
+    try { herramientas = JSON.parse(req.body.herramientas || "[]"); } catch {}
+    try { loAprenderan = JSON.parse(req.body.loAprenderan || "[]"); } catch {}
+    try { modulos = JSON.parse(req.body.modulos || "[]"); } catch {}
 
-    try {
-      loAprenderan = JSON.parse(req.body.loAprenderan || "[]");
-    } catch (e) {
-      console.error("Error parseando loAprenderan:", e);
-    }
-
-    try {
-      modulos = JSON.parse(req.body.modulos || "[]");
-    } catch (e) {
-      console.error("Error parseando modulos:", e);
-    }
-
-    // Validar enlaces en módulos
-    modulos = modulos.map((modulo) => {
-      if (!Array.isArray(modulo.enlaces)) {
-        modulo.enlaces = [];
-      } else {
-        modulo.enlaces = modulo.enlaces.filter(
-          (enlace) =>
-            enlace &&
-            typeof enlace.nombre === "string" &&
-            typeof enlace.url === "string"
-        );
+    // Agrupar archivos nuevos por módulo
+    const archivosModuloNuevosPorModulo = {};
+    req.files.forEach((file) => {
+      if (file.fieldname === "imagen") return;
+      const match = file.fieldname.match(/^archivosModulo_(\d+)$/);
+      if (match) {
+        const index = match[1];
+        if (!archivosModuloNuevosPorModulo[index]) archivosModuloNuevosPorModulo[index] = [];
+        archivosModuloNuevosPorModulo[index].push(file);
       }
-      return modulo;
     });
 
-    const opcionesValidas = ["comunidad", "estudiante", "docente"];
-    let dirigidoA = (req.body.dirigidoA || "").trim().toLowerCase();
-    if (!opcionesValidas.includes(dirigidoA)) {
-      dirigidoA = req.body.dirigidoA || "";
-    }
+    const limpiarPublicId = (nombreOriginal) => {
+      return nombreOriginal
+        .replace(/\.[^/.]+$/, "")
+        .replace(/\s+/g, "_")
+        .replace(/[^\w\-]/g, "");
+    };
 
-    let duracionHoras = parseInt(req.body.duracionHoras, 10);
-    if (isNaN(duracionHoras) || duracionHoras < 0) {
-      duracionHoras = 0;
-    }
-
-    const fechaInicio = parseFecha(req.body.fechaInicio);
-    const fechaTermino = parseFecha(req.body.fechaTermino);
-
-    // Subida de archivos de módulos si existen
     const archivosModuloNuevos = [];
-    if (req.files?.archivosModulo) {
-      console.log("🟢 Comenzando carga de archivos módulo...");
-      for (const file of req.files.archivosModulo) {
-        console.log("→ Subiendo archivo:", file.originalname);
+
+    for (const index in archivosModuloNuevosPorModulo) {
+      for (const file of archivosModuloNuevosPorModulo[index]) {
+        const esPDF = file.mimetype === "application/pdf" &&
+          file.originalname.toLowerCase().endsWith(".pdf");
+        if (!esPDF) {
+          console.warn(`Archivo omitido (no es PDF): ${file.originalname}`);
+          continue;
+        }
+
         try {
+          const publicIdLimpio = `cursos/${cursoId}/modulos/${limpiarPublicId(file.originalname)}`;
+
           const result = await new Promise((resolve, reject) => {
             const stream = cloudinary.uploader.upload_stream(
-              {
-                resource_type: "raw",
-                folder: "modulos",
-                public_id: file.originalname.split(".")[0],
-              },
-              (error, result) => {
-                if (error) {
-                  console.error("❌ Error subiendo archivo módulo:", error);
-                  reject(error);
-                } else {
-                  resolve(result);
-                }
-              }
+              { resource_type: "raw", public_id: publicIdLimpio },
+              (error, uploadResult) => error ? reject(error) : resolve(uploadResult)
             );
             stream.end(file.buffer);
           });
@@ -646,15 +574,26 @@ exports.actualizarCurso = async (req, res) => {
           archivosModuloNuevos.push({
             nombre: file.originalname,
             url: result.secure_url,
+            public_id: result.public_id,
+            moduloIndex: parseInt(index),
           });
-          console.log("✅ Archivo subido con éxito:", result.secure_url);
         } catch (err) {
-          console.error("❌ Error crítico en archivo módulo:", err);
-          return res.status(500).json({ mensaje: "Error en la carga del archivo" });
+          console.error(`Error subiendo archivo ${file.originalname}:`, err);
         }
       }
     }
 
+    // Añadir PDFs nuevos con public_id a modulos
+    archivosModuloNuevos.forEach(({ nombre, url, public_id, moduloIndex }) => {
+      if (!modulos[moduloIndex].archivos) modulos[moduloIndex].archivos = [];
+      modulos[moduloIndex].archivos.push({
+        nombre,
+        url,
+        public_id, // guardamos el public_id para poder borrar después
+      });
+    });
+
+    // Obtener curso actual
     const cursoRef = admin.firestore().collection("cursos").doc(cursoId);
     const cursoSnapshot = await cursoRef.get();
 
@@ -664,45 +603,39 @@ exports.actualizarCurso = async (req, res) => {
 
     const cursoActual = cursoSnapshot.data();
 
-    // Preparar datos a actualizar - solo reemplaza si el valor enviado es válido (no vacío ni null)
+    // Preparar actualización
     const cursoActualizado = {
-      titulo:
-        typeof req.body.titulo === "string" && req.body.titulo.trim() !== ""
-          ? req.body.titulo
-          : cursoActual.titulo || "",
+      titulo: typeof req.body.titulo === "string" && req.body.titulo.trim() !== ""
+        ? req.body.titulo
+        : cursoActual.titulo || "",
       imagenUrl: imagenUrl || cursoActual.imagenUrl || "",
       herramientas,
       loAprenderan,
-      duracionHoras,
-      bienvenida:
-        typeof req.body.bienvenida === "string" && req.body.bienvenida.trim() !== ""
-          ? req.body.bienvenida
-          : cursoActual.bienvenida || "",
+      duracionHoras: isNaN(parseInt(req.body.duracionHoras))
+        ? 0
+        : parseInt(req.body.duracionHoras),
+      bienvenida: typeof req.body.bienvenida === "string" && req.body.bienvenida.trim() !== ""
+        ? req.body.bienvenida
+        : cursoActual.bienvenida || "",
       modulos,
       archivosModulo: Array.isArray(cursoActual.archivosModulo)
         ? [...cursoActual.archivosModulo, ...archivosModuloNuevos]
         : archivosModuloNuevos,
-      fechaInicio,
-      fechaTermino,
-      dirigidoA,
+      fechaInicio: parseFecha(req.body.fechaInicio),
+      fechaTermino: parseFecha(req.body.fechaTermino),
+      dirigidoA: req.body.dirigidoA || cursoActual.dirigidoA || "",
       actualizadoEn: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    console.log("📝 Datos a actualizar:", JSON.stringify(cursoActualizado, null, 2));
-
     await cursoRef.update(cursoActualizado);
 
-    console.log("✅ Curso actualizado con éxito");
     return res.status(200).json({ mensaje: "Curso actualizado con éxito" });
   } catch (error) {
-    console.error("❌ Error general en actualización:", {
-      mensaje: error.message,
-      stack: error.stack,
-      error,
-    });
+    console.error("Error en actualizarCurso:", error);
     return res.status(500).json({ mensaje: "Error interno del servidor" });
   }
 };
+
 
 
 exports.registrarParticipanteCurso = async (req, res) => {
@@ -973,6 +906,60 @@ exports.getTopCursos = async (req, res) => {
     res.status(200).json({ cursos: topCursos });
   } catch (error) {
     console.error("Error al obtener cursos destacados:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
+
+exports.eliminarArchivoModulo = async (req, res) => {
+  const { cursoId, moduloIndex } = req.params; // O lo que uses para pasar índice
+  const { url } = req.body;
+
+  if (!url) {
+    return res.status(400).json({ mensaje: "Falta URL del archivo a eliminar" });
+  }
+
+  const moduloIndexNum = parseInt(moduloIndex, 10);
+  if (isNaN(moduloIndexNum)) {
+    return res.status(400).json({ mensaje: "Índice de módulo inválido" });
+  }
+
+  try {
+    const cursoRef = db.collection("cursos").doc(cursoId);
+    const cursoSnap = await cursoRef.get();
+
+    if (!cursoSnap.exists) {
+      return res.status(404).json({ mensaje: "Curso no encontrado" });
+    }
+
+    const cursoData = cursoSnap.data();
+
+    if (!cursoData.modulos || !Array.isArray(cursoData.modulos)) {
+      return res.status(404).json({ mensaje: "El curso no tiene módulos" });
+    }
+
+    if (moduloIndexNum < 0 || moduloIndexNum >= cursoData.modulos.length) {
+      return res.status(400).json({ mensaje: "Índice de módulo fuera de rango" });
+    }
+
+    const modulo = cursoData.modulos[moduloIndexNum];
+    const archivoExistia = (modulo.archivos || []).some(archivo => archivo.url === url);
+    if (!archivoExistia) {
+      return res.status(404).json({ mensaje: "Archivo no encontrado en el módulo" });
+    }
+
+    // Filtrar archivo a eliminar
+    modulo.archivos = (modulo.archivos || []).filter(archivo => archivo.url !== url);
+
+    // Actualizar módulo en array
+    const modulosActualizados = [...cursoData.modulos];
+    modulosActualizados[moduloIndexNum] = modulo;
+
+    // Actualizar en Firestore
+    await cursoRef.update({ modulos: modulosActualizados });
+
+    res.status(200).json({ mensaje: "Archivo eliminado correctamente" });
+  } catch (error) {
+    console.error("Error eliminando archivo módulo:", error);
     res.status(500).json({ mensaje: "Error interno del servidor" });
   }
 };
