@@ -5,11 +5,15 @@ const path = require('path');
 
 const app = express();
 
+// Importar rutas existentes
 const authRoutes = require('./src/routes/authRoutes'); // Ruta para usuarios
 const mailRoutes = require('./src/routes/mailRoutes'); // Ruta para correos
 const bookRoutes = require('./src/routes/bookRoutes'); // Ruta para libros
 const cursosRoutes = require('./src/routes/cursosRoutes'); // Ruta para cursos
-const messagesRoutes = require('./src/routes/messagesRoutes');
+const messagesRoutes = require('./src/routes/messagesRoutes'); // Ruta para mensajes
+
+// Importar ruta para archivos (URLs firmadas Cloudinary)
+const archivosRoutes = require('./src/routes/archivosRoutes'); // Asegúrate que esta ruta existe y exporta el router
 
 // Configuración CORS
 const allowedOrigins = [
@@ -54,12 +58,15 @@ app.use(express.json());
 // Ruta pública para acceder a PDFs u otros archivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Rutas
+// Rutas existentes
 app.use('/api/auth', authRoutes);
 app.use('/api/mail', mailRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/cursos', cursosRoutes);
 app.use('/api/mensajes', messagesRoutes);
+
+// NUEVA RUTA PARA ARCHIVOS
+app.use('/api/archivos', archivosRoutes);
 
 // Middleware para loguear peticiones (opcional para debug)
 app.use((req, res, next) => {
