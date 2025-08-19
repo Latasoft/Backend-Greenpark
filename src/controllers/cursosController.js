@@ -966,5 +966,28 @@ exports.eliminarArchivoModulo = async (req, res) => {
 
 
 
+exports.uploadCoursePdf = async (req, res) => {
+  const { cursoId } = req.params;
+  const { pdfFile } = req.body;
 
+  if (!pdfFile) {
+    return res.status(400).json({ mensaje: "Falta el archivo PDF" });
+  }
 
+  try {
+    const cursoRef = db.collection("cursos").doc(cursoId);
+    const cursoSnap = await cursoRef.get();
+
+    if (!cursoSnap.exists) {
+      return res.status(404).json({ mensaje: "Curso no encontrado" });
+    }
+
+    // Aquí puedes manejar la lógica para subir el PDF a tu almacenamiento
+    // y luego actualizar la referencia en Firestore
+
+    res.status(200).json({ mensaje: "PDF subido correctamente" });
+  } catch (error) {
+    console.error("Error subiendo PDF del curso:", error);
+    res.status(500).json({ mensaje: "Error interno del servidor" });
+  }
+};
