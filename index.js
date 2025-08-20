@@ -11,6 +11,7 @@ const mailRoutes = require('./src/routes/mailRoutes'); // Ruta para correos
 const bookRoutes = require('./src/routes/bookRoutes'); // Ruta para libros
 const cursosRoutes = require('./src/routes/cursosRoutes'); // Ruta para cursos
 const messagesRoutes = require('./src/routes/messagesRoutes'); // Ruta para mensajes
+const quizRoutes = require('./src/routes/quizRoutes'); // Ruta para respuestas de quiz
 
 // Importar ruta para archivos (URLs firmadas Cloudinary)
 const archivosRoutes = require('./src/routes/archivosRoutes'); // Asegúrate que esta ruta existe y exporta el router
@@ -64,6 +65,7 @@ app.use('/api/mail', mailRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/cursos', cursosRoutes);
 app.use('/api/mensajes', messagesRoutes);
+app.use('/api/quiz', quizRoutes);
 
 // NUEVA RUTA PARA ARCHIVOS
 app.use('/api/archivos', archivosRoutes);
