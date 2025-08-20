@@ -13,4 +13,7 @@ router.get('/respuestas/usuario/:cursoId', authenticate, quizController.obtenerR
 // Ruta para obtener todas las respuestas de un curso (solo admin)
 router.get('/respuestas/curso/:cursoId', authenticate, isAdmin, quizController.obtenerTodasRespuestasCurso);
 
+// Ruta para verificar intentos previos de un quiz específico
+router.get('/intentos/:cursoId/:moduloIndex', authenticate, quizController.verificarIntentosPrevios);
+
 module.exports = router;

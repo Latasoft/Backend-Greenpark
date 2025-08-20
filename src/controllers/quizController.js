@@ -129,6 +129,76 @@ exports.obtenerTodasRespuestasCurso = async (req, res) => {
   }
 };
 
+// Verificar intentos previos de un quiz específico
+exports.verificarIntentosPrevios = async (req, res) => {
+  try {
+    const { cursoId, moduloIndex } = req.params;
+    // Asegúrate de obtener el ID de usuario correctamente del objeto req.user
+    const usuarioId = req.user?.id;
+
+    if (!cursoId || moduloIndex === undefined) {
+      return res.status(400).json({ mensaje: 'Datos incompletos. Se requiere cursoId y moduloIndex.' });
+    }
+
+    if (!usuarioId) {
+      return res.status(401).json({ mensaje: 'Usuario no autenticado.' });
+    }
+
+    console.log(`Verificando intentos previos - Usuario: ${usuarioId}, Curso: ${cursoId}, Módulo: ${moduloIndex}`);
+
+    // Consultar respuestas previas del usuario para este quiz específico
+    // Sin usar orderBy para evitar la necesidad de un índice compuesto
+    const querySnapshot = await db.collection('respuestasQuiz')
+      .where('cursoId', '==', cursoId)
+      .where('usuarioId', '==', usuarioId)
+      .where('moduloIndex', '==', parseInt(moduloIndex))
+      .get();
+    
+    if (querySnapshot.empty) {
+      return res.status(200).json({ 
+        intentosPrevios: 0,
+        ultimoIntento: null,
+        aprobado: false
+      });
+    }
+
+    // Ordenar los documentos manualmente en memoria
+    const docs = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        creadoEn: data.creadoEn?.toDate() || new Date(0)
+      };
+    });
+    
+    // Ordenar por fecha de creación (descendente)
+    docs.sort((a, b) => b.creadoEn - a.creadoEn);
+    
+    // Obtener el último intento
+    const ultimoIntento = docs[0];
+    const totalIntentos = docs.length;
+    
+    // Verificar si el último intento fue aprobado (70% o más)
+    const aprobado = ultimoIntento.porcentaje >= 70;
+    
+    return res.status(200).json({
+      intentosPrevios: totalIntentos,
+      ultimoIntento: {
+        id: ultimoIntento.id,
+        fecha: ultimoIntento.creadoEn,
+        porcentaje: ultimoIntento.porcentaje,
+        puntajeTotal: ultimoIntento.puntajeTotal,
+        totalPreguntas: ultimoIntento.totalPreguntas
+      },
+      aprobado
+    });
+  } catch (error) {
+    console.error('Error al verificar intentos previos:', error);
+    return res.status(500).json({ mensaje: 'Error al verificar intentos previos', error: error.message });
+  }
+};
+
 // Add this function to update user course progress after saving quiz results
 const actualizarProgresoUsuarioCurso = async (usuarioId, cursoId, moduloIndex, quizAprobado) => {
   try {

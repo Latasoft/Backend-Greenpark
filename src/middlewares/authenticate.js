@@ -14,7 +14,11 @@ module.exports = (req, res, next) => {
       if (req.body && req.body.usuarioId) {
         // Si hay un ID de usuario en el cuerpo, continuamos pero con un objeto de usuario simple
         console.log("Encontrado ID de usuario en el cuerpo:", req.body.usuarioId);
-        req.user = { uid: req.body.usuarioId, fromBody: true };
+        req.user = { 
+          uid: req.body.usuarioId, 
+          id: req.body.usuarioId,
+          fromBody: true 
+        };
         return next();
       }
       
@@ -38,9 +42,10 @@ module.exports = (req, res, next) => {
       const decoded = jwt.verify(token, SECRET_KEY);
       console.log("Token decodificado:", { id: decoded.id, rol: decoded.rol });
       
-      // Aseguramos que decoded.id está disponible como uid para mantener coherencia
+      // Aseguramos que tanto id como uid estén disponibles para mantener coherencia
       req.user = {
         ...decoded,
+        id: decoded.id || decoded.uid,
         uid: decoded.id || decoded.uid
       };
       
