@@ -6,30 +6,20 @@ const { db } = require('../config/firebase');
 exports.guardarRespuestasQuiz = async (req, res) => {
   try {
     console.log("Body recibido:", JSON.stringify(req.body, null, 2));
-    console.log("Headers:", JSON.stringify(req.headers, null, 2));
-
+    
     const { cursoId, moduloIndex, respuestas, puntajeTotal, porcentaje, totalPreguntas, usuarioId: clientUserId } = req.body;
     
     // Obtener el ID de usuario del token JWT o del body como fallback
-    let usuarioId = null;
+    const usuarioId = req.user?.uid || clientUserId;
     
-    if (req.user && req.user.uid) {
-      usuarioId = req.user.uid;
-      console.log("ID de usuario obtenido del token:", usuarioId);
-    } else if (clientUserId) {
-      usuarioId = clientUserId;
-      console.log("ID de usuario obtenido del body:", usuarioId);
-    } else {
-      console.log("No se encontró ID de usuario en req.user ni en req.body");
-      // Usar un ID de usuario genérico para pruebas
-      usuarioId = 'usuario-test-' + Date.now();
-      console.log("Se usará un ID temporal:", usuarioId);
+    if (!usuarioId) {
+      return res.status(400).json({ 
+        mensaje: 'ID de usuario no proporcionado',
+        error: 'missing_user_id'
+      });
     }
 
-    if (!cursoId || moduloIndex === undefined || !Array.isArray(respuestas)) {
-      console.log("Datos incompletos:", { cursoId, moduloIndex, tieneRespuestas: Array.isArray(respuestas) });
-      return res.status(400).json({ mensaje: 'Datos incompletos para guardar respuestas' });
-    }
+    console.log(`Procesando respuestas de quiz para usuario: ${usuarioId}`);
 
     // Estructura del documento a guardar en Firestore
     const respuestaQuizData = {
@@ -43,68 +33,33 @@ exports.guardarRespuestasQuiz = async (req, res) => {
       creadoEn: new Date()
     };
 
-    // Comprobar que la conexión con Firestore está disponible
-    if (!db) {
-      console.error('Error: La instancia de Firestore no está disponible');
-      return res.status(500).json({ 
-        mensaje: 'Error de configuración en el servidor', 
-        error: 'Firestore no inicializado' 
-      });
-    }
+    console.log("Guardando respuestas en Firestore:", respuestaQuizData);
 
-    // Verificar la colección
     try {
-      const collectionRef = db.collection('respuestasQuiz');
-      console.log('Colección de respuestasQuiz obtenida:', collectionRef.id);
-
-      // Intentar una operación simple para verificar acceso a Firestore
-      await db.collection('_test_').doc('_test_').set({ test: true });
-      console.log('Verificación de acceso a Firestore exitosa');
-      await db.collection('_test_').doc('_test_').delete();
-    } catch (testError) {
-      console.error('Error al verificar acceso a Firestore:', testError);
-      return res.status(500).json({ 
-        mensaje: 'Error de conexión con la base de datos', 
-        error: testError.message 
-      });
-    }
-
-    // Guardar en Firestore usando Firebase Admin SDK
-    try {
-      // Convertir los campos de fecha a objetos Firestore Timestamp para evitar errores
-      respuestaQuizData.creadoEn = admin.firestore.Timestamp.fromDate(respuestaQuizData.creadoEn);
+      // Guardar respuestas del quiz
+      const docRef = await db.collection('respuestasQuiz').add(respuestaQuizData);
+      console.log(`Respuestas guardadas con ID: ${docRef.id}`);
       
-      // Añadir logs detallados para debug
-      console.log('Intentando guardar documento en respuestasQuiz con datos:', 
-        JSON.stringify({...respuestaQuizData, creadoEn: respuestaQuizData.creadoEn.toDate()}));
+      // Determinar si el quiz fue aprobado (70% o más)
+      const quizAprobado = porcentaje >= 70;
       
-      // Realizar la escritura con un timeout para detectar problemas de conexión
-      const docRef = await Promise.race([
-        db.collection('respuestasQuiz').add(respuestaQuizData),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout al guardar en Firestore')), 10000)
-        )
-      ]);
+      // Actualizar progreso del usuario en el curso solo si el quiz fue aprobado
+      const progresoActualizado = await actualizarProgresoUsuarioCurso(usuarioId, cursoId, moduloIndex, quizAprobado);
       
-      console.log(`Respuestas de quiz guardadas exitosamente con ID: ${docRef.id}`);
       return res.status(201).json({ 
         mensaje: 'Respuestas guardadas correctamente', 
-        id: docRef.id 
+        id: docRef.id,
+        quizAprobado,
+        progresoActualizado
       });
-    } catch (innerError) {
-      console.error('Error específico al guardar en Firestore:', innerError);
-      console.error('Detalles adicionales:', innerError.code, innerError.details);
-      
-      return res.status(500).json({ 
-        mensaje: 'Error al guardar respuestas en la base de datos', 
-        error: innerError.message,
-        codigo: innerError.code || 'UNKNOWN'
-      });
+    } catch (dbError) {
+      console.error("Error al guardar en Firestore:", dbError);
+      throw dbError;
     }
   } catch (error) {
-    console.error('Error general al guardar respuestas de quiz:', error);
+    console.error('Error al guardar respuestas de quiz:', error);
     return res.status(500).json({ 
-      mensaje: 'Error al procesar la solicitud', 
+      mensaje: 'Error al guardar respuestas', 
       error: error.message 
     });
   }
@@ -171,5 +126,101 @@ exports.obtenerTodasRespuestasCurso = async (req, res) => {
   } catch (error) {
     console.error('Error al obtener respuestas de quiz:', error);
     return res.status(500).json({ mensaje: 'Error al obtener respuestas', error: error.message });
+  }
+};
+
+// Add this function to update user course progress after saving quiz results
+const actualizarProgresoUsuarioCurso = async (usuarioId, cursoId, moduloIndex, quizAprobado) => {
+  try {
+    console.log(`Actualizando progreso para usuario: ${usuarioId}, curso: ${cursoId}, módulo: ${moduloIndex}, aprobado: ${quizAprobado}`);
+    
+    // Solo actualizar progreso si el quiz fue aprobado
+    if (!quizAprobado) {
+      console.log("Quiz no aprobado, no se actualiza progreso");
+      return false;
+    }
+    
+    // Reference to the user-course document - using correct collection name "usuariosCurso"
+    const usuariosCursoRef = db.collection('usuariosCurso')
+      .where('usuarioId', '==', usuarioId)
+      .where('cursoId', '==', cursoId);
+      
+    const usuariosCursoSnapshot = await usuariosCursoRef.get();
+    
+    // Get curso info to determine total module count
+    const cursoRef = db.collection('cursos').doc(cursoId);
+    const cursoDoc = await cursoRef.get();
+    
+    if (!cursoDoc.exists) {
+      console.error("Curso no encontrado:", cursoId);
+      return false;
+    }
+    
+    const cursoData = cursoDoc.data();
+    const totalModulos = cursoData.modulos ? cursoData.modulos.length : 0;
+    
+    if (totalModulos === 0) {
+      console.log("El curso no tiene módulos");
+      return false;
+    }
+    
+    let usuarioCursoDoc;
+    let docRef;
+    
+    if (usuariosCursoSnapshot.empty) {
+      // Create new user-course relationship if it doesn't exist
+      console.log("No existe registro de usuariosCurso, creando uno nuevo");
+      
+      const newUserCourse = {
+        usuarioId,
+        cursoId,
+        modulosCompletados: quizAprobado ? [moduloIndex] : [],
+        fechaInicio: new Date(),
+        fechaUltimaActividad: new Date(),
+        porcentajeCompletado: quizAprobado ? Math.round((1 / totalModulos) * 100) : 0,
+        completado: false
+      };
+      
+      // Using correct collection name "usuariosCurso"
+      docRef = await db.collection('usuariosCurso').add(newUserCourse);
+      console.log(`Creado nuevo registro usuariosCurso con ID: ${docRef.id}`);
+      return true;
+    } else {
+      // Update existing user-course relationship
+      docRef = usuariosCursoSnapshot.docs[0].ref;
+      usuarioCursoDoc = usuariosCursoSnapshot.docs[0].data();
+      console.log("Registro usuariosCurso existente encontrado:", usuarioCursoDoc);
+      
+      // Update last activity
+      usuarioCursoDoc.fechaUltimaActividad = new Date();
+      
+      // Add module to completed modules if quiz was passed and not already there
+      if (quizAprobado && !usuarioCursoDoc.modulosCompletados.includes(moduloIndex)) {
+        usuarioCursoDoc.modulosCompletados.push(moduloIndex);
+        console.log(`Módulo ${moduloIndex} marcado como completado`);
+        
+        // Calculate percentage based on completed modules
+        const porcentajeCompletado = Math.round((usuarioCursoDoc.modulosCompletados.length / totalModulos) * 100);
+        usuarioCursoDoc.porcentajeCompletado = porcentajeCompletado;
+        
+        // Check if all modules are completed
+        usuarioCursoDoc.completado = usuarioCursoDoc.modulosCompletados.length === totalModulos;
+        
+        await docRef.update({
+          modulosCompletados: usuarioCursoDoc.modulosCompletados,
+          fechaUltimaActividad: new Date(),
+          porcentajeCompletado: porcentajeCompletado,
+          completado: usuarioCursoDoc.completado
+        });
+        console.log(`Registro usuariosCurso actualizado. Progreso: ${porcentajeCompletado}%`);
+        return true;
+      }
+      
+      console.log("No se actualizó el progreso (módulo ya completado o quiz no aprobado)");
+      return false;
+    }
+  } catch (error) {
+    console.error("Error al actualizar progreso de usuario en curso:", error);
+    return false;
   }
 };

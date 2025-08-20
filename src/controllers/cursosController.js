@@ -991,3 +991,77 @@ exports.uploadCoursePdf = async (req, res) => {
     res.status(500).json({ mensaje: "Error interno del servidor" });
   }
 };
+
+// Add this new function to handle course completion
+exports.finalizarCurso = async (req, res) => {
+  try {
+    const { cursoId, usuarioId } = req.body;
+    
+    if (!cursoId || !usuarioId) {
+      return res.status(400).json({ 
+        mensaje: 'Se requieren cursoId y usuarioId',
+        error: 'missing_parameters'
+      });
+    }
+    
+    // Get curso info
+    const cursoRef = db.collection('cursos').doc(cursoId);
+    const cursoDoc = await cursoRef.get();
+    
+    if (!cursoDoc.exists) {
+      return res.status(404).json({ mensaje: 'Curso no encontrado' });
+    }
+    
+    const cursoData = cursoDoc.data();
+    
+    // Get user course progress - using correct collection name "usuariosCurso"
+    const usuariosCursoRef = db.collection('usuariosCurso')
+      .where('usuarioId', '==', usuarioId)
+      .where('cursoId', '==', cursoId);
+      
+    const usuariosCursoSnapshot = await usuariosCursoRef.get();
+    
+    if (usuariosCursoSnapshot.empty) {
+      return res.status(404).json({ mensaje: 'No se encontró registro de progreso para este usuario y curso' });
+    }
+    
+    const usuarioCursoDoc = usuariosCursoSnapshot.docs[0];
+    const usuarioCursoData = usuarioCursoDoc.data();
+    
+    // Count modules with quizzes in the course
+    let modulosConQuiz = 0;
+    if (cursoData.modulos && Array.isArray(cursoData.modulos)) {
+      modulosConQuiz = cursoData.modulos.filter(modulo => 
+        modulo.quiz && modulo.quiz.preguntas && modulo.quiz.preguntas.length > 0
+      ).length;
+    }
+    
+    // Check if all modules have been completed
+    if (usuarioCursoData.modulosCompletados.length < modulosConQuiz) {
+      return res.status(400).json({ 
+        mensaje: `Debes completar todos los módulos con quiz antes de finalizar el curso. Has completado ${usuarioCursoData.modulosCompletados.length} de ${modulosConQuiz}.`,
+        modulosCompletados: usuarioCursoData.modulosCompletados.length,
+        totalModulos: modulosConQuiz
+      });
+    }
+    
+    // Mark course as completed
+    await usuarioCursoDoc.ref.update({
+      completado: true,
+      porcentajeCompletado: 100,
+      fechaCompletado: new Date()
+    });
+    
+    return res.status(200).json({
+      mensaje: 'Curso finalizado exitosamente',
+      porcentajeCompletado: 100,
+      fechaCompletado: new Date()
+    });
+  } catch (error) {
+    console.error('Error al finalizar curso:', error);
+    return res.status(500).json({ 
+      mensaje: 'Error al finalizar curso', 
+      error: error.message 
+    });
+  }
+};
