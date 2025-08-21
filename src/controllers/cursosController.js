@@ -1072,7 +1072,7 @@ exports.finalizarCurso = async (req, res) => {
     const cursoData = cursoDoc.data();
     console.log(`Curso encontrado: ${cursoData.titulo || 'Sin título'}`);
     
-    // Get user course progress - using the same structure as actualizarProgresoCurso
+    // Get user course progress
     const usuarioCursoRef = db
       .collection('cursos')
       .doc(cursoId)
@@ -1082,12 +1082,13 @@ exports.finalizarCurso = async (req, res) => {
     console.log(`Buscando progreso en: cursos/${cursoId}/usuariosCurso/${usuarioId}`);
     const usuarioCursoDoc = await usuarioCursoRef.get();
     
+    let usuarioCursoData = {};
+    
     // Si no existe el documento de progreso, lo creamos con progreso 100%
     if (!usuarioCursoDoc.exists) {
       console.log(`No se encontró registro de progreso para usuario ${usuarioId} en curso ${cursoId}. Creando uno nuevo.`);
       
       // Para propósitos de depuración, generamos el certificado de todas formas
-      // En producción, deberías decidir si quieres permitir esto o no
       await usuarioCursoRef.set({
         progreso: 100,
         completado: true,
@@ -1095,13 +1096,18 @@ exports.finalizarCurso = async (req, res) => {
       });
       
       console.log('Documento de progreso creado con progreso 100%');
+      
+      // Obtener los datos recién creados
+      usuarioCursoData = {
+        progreso: 100,
+        completado: true,
+        fechaCompletado: new Date()
+      };
     } else {
-      console.log('Documento de progreso encontrado:', usuarioCursoDoc.data());
+      usuarioCursoData = usuarioCursoDoc.data();
+      console.log('Documento de progreso encontrado:', usuarioCursoData);
       
-      const usuarioCursoData = usuarioCursoDoc.data();
-      
-      // Si el progreso no es 100% pero queremos forzar la generación del certificado
-      // para propósitos de depuración, eliminamos esta validación temporalmente
+      // Si el progreso no es 100%, lo actualizamos
       if (!usuarioCursoData.progreso || usuarioCursoData.progreso < 100) {
         console.log(`Advertencia: El progreso actual es del ${usuarioCursoData.progreso || 0}%, pero se generará el certificado de todas formas.`);
         
@@ -1113,65 +1119,95 @@ exports.finalizarCurso = async (req, res) => {
         }, { merge: true });
         
         console.log('Progreso actualizado a 100%');
+        
+        // Actualizar los datos locales
+        usuarioCursoData = {
+          ...usuarioCursoData,
+          progreso: 100,
+          completado: true,
+          fechaCompletado: new Date()
+        };
       }
     }
     
-    // Mark course as completed
-    await usuarioCursoRef.set({
-      completado: true,
-      porcentajeCompletado: 100,
-      fechaCompletado: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    // Función para buscar el nombre completo de un usuario
+    const buscarNombreUsuario = async (id) => {
+      console.log(`Buscando datos para el usuario con ID: ${id}`);
+      
+      // Intentar en la colección 'users' primero
+      try {
+        const userDoc = await db.collection('users').doc(id).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data();
+          console.log('Usuario encontrado en colección "users":', userData);
+          // Verificar diferentes campos posibles para nombre y apellido
+          const nombre = userData.nombre || userData.name || userData.firstName || '';
+          const apellido = userData.apellido || userData.lastname || userData.lastName || '';
+          return `${nombre} ${apellido}`.trim();
+        }
+      } catch (err) {
+        console.log('Error al buscar en colección "users":', err);
+      }
+      
+      // Intentar en la colección 'usuarios' como respaldo
+      try {
+        const usuarioDoc = await db.collection('usuarios').doc(id).get();
+        if (usuarioDoc.exists) {
+          const userData = usuarioDoc.data();
+          console.log('Usuario encontrado en colección "usuarios":', userData);
+          // Verificar diferentes campos posibles para nombre y apellido
+          const nombre = userData.nombre || userData.name || userData.firstName || '';
+          const apellido = userData.apellido || userData.lastname || userData.lastName || '';
+          return `${nombre} ${apellido}`.trim();
+        }
+      } catch (err) {
+        console.log('Error al buscar en colección "usuarios":', err);
+      }
+      
+      return '';
+    };
     
-    console.log('Curso marcado como completado');
+    // Buscar nombre de usuario
+    let nombreCompleto = '';
     
-    // Obtener datos del usuario
-    const usuarioDoc = await db.collection('usuarios').doc(usuarioId).get();
-    if (!usuarioDoc.exists) {
-      console.log(`Error: Usuario con ID ${usuarioId} no encontrado`);
-      
-      // Para propósitos de depuración, usamos un nombre por defecto
-      const nombreCompleto = "Usuario de Prueba";
-      
-      // Generar certificado incluso sin usuario para depuración
-      const certificadoData = {
-        usuarioId,
-        nombreUsuario: nombreCompleto,
-        cursoId,
-        nombreCurso: cursoData.titulo || 'Curso sin título',
-        fechaEmision: new Date(),
-        codigo: `CERT-${cursoId.substring(0, 4)}-${usuarioId.substring(0, 4)}-${Date.now().toString(36)}`
-      };
-      
-      console.log('Generando certificado con datos por defecto:', certificadoData);
-      
-      const certificadoRef = await db.collection('certificados').add(certificadoData);
-      console.log(`Certificado creado con ID: ${certificadoRef.id}`);
-      
-      // Generar URL del diploma
-      const diplomaUrl = `/diploma.html?nombre=${encodeURIComponent(nombreCompleto)}&curso=${encodeURIComponent(cursoData.titulo || 'Curso sin título')}&fecha=${encodeURIComponent(new Date().toLocaleDateString())}&codigo=${encodeURIComponent(certificadoData.codigo)}`;
-      
-      console.log(`URL del diploma generada: ${diplomaUrl}`);
-      
-      return res.status(200).json({
-        mensaje: 'Curso finalizado exitosamente (con datos por defecto)',
-        porcentajeCompletado: 100,
-        fechaCompletado: new Date(),
-        certificado: {
-          id: certificadoRef.id,
-          ...certificadoData
-        },
-        diplomaUrl
-      });
+    // Si usuarioCurso tiene información sobre el usuario
+    if (usuarioCursoData && usuarioCursoData.nombreUsuario) {
+      nombreCompleto = usuarioCursoData.nombreUsuario;
+      console.log(`Nombre encontrado en usuariosCurso: ${nombreCompleto}`);
     }
     
-    const userData = usuarioDoc.data();
-    console.log('Datos de usuario encontrados:', userData);
+    // Si no tenemos nombre, buscar en las colecciones de usuarios
+    if (!nombreCompleto) {
+      nombreCompleto = await buscarNombreUsuario(usuarioId);
+      console.log(`Nombre obtenido tras búsqueda: ${nombreCompleto || 'No encontrado'}`);
+    }
     
-    const nombreCompleto = `${userData.nombre || ''} ${userData.apellido || ''}`.trim() || 'Estudiante';
-    console.log(`Nombre completo: ${nombreCompleto}`);
+    // Si aún no tenemos nombre, buscar en otras fuentes
+    if (!nombreCompleto) {
+      // Buscar en respuestasQuiz
+      try {
+        const respuestasSnapshot = await db.collection("respuestasQuiz")
+          .where("usuarioId", "==", usuarioId)
+          .limit(1)
+          .get();
+          
+        if (!respuestasSnapshot.empty && respuestasSnapshot.docs[0].data().nombreUsuario) {
+          nombreCompleto = respuestasSnapshot.docs[0].data().nombreUsuario;
+          console.log(`Nombre encontrado en respuestasQuiz: ${nombreCompleto}`);
+        }
+      } catch (err) {
+        console.log("Error al buscar nombre de usuario en respuestasQuiz", err);
+      }
+    }
+    
+    // Si aún no hay nombre, usar un placeholder
+    if (!nombreCompleto) {
+      nombreCompleto = `Usuario ${usuarioId.substring(0, 6)}`;
+      console.log(`Usando nombre por defecto: ${nombreCompleto}`);
+    }
     
     // Verificar si ya existe un certificado para este usuario y curso
+    console.log(`Buscando certificados existentes para usuarioId=${usuarioId} y cursoId=${cursoId}`);
     const certificadosExistentes = await db.collection('certificados')
       .where('usuarioId', '==', usuarioId)
       .where('cursoId', '==', cursoId)
@@ -1185,6 +1221,13 @@ exports.finalizarCurso = async (req, res) => {
       console.log('Ya existe un certificado para este usuario y curso');
       certificadoRef = certificadosExistentes.docs[0].ref;
       certificadoData = certificadosExistentes.docs[0].data();
+      
+      // Actualizar el nombre del usuario si es necesario
+      if (certificadoData.nombreUsuario !== nombreCompleto) {
+        console.log(`Actualizando nombre en certificado de "${certificadoData.nombreUsuario}" a "${nombreCompleto}"`);
+        await certificadoRef.update({ nombreUsuario: nombreCompleto });
+        certificadoData.nombreUsuario = nombreCompleto;
+      }
     } else {
       // Generar certificado nuevo
       certificadoData = {
@@ -1201,8 +1244,8 @@ exports.finalizarCurso = async (req, res) => {
       console.log(`Certificado creado con ID: ${certificadoRef.id}`);
     }
     
-    // Generar URL del diploma
-    const diplomaUrl = `/diploma.html?nombre=${encodeURIComponent(nombreCompleto)}&curso=${encodeURIComponent(cursoData.titulo || 'Curso sin título')}&fecha=${encodeURIComponent(new Date().toLocaleDateString())}&codigo=${encodeURIComponent(certificadoData.codigo)}`;
+    // Generar URL del diploma sin fecha (se genera en la plantilla)
+    const diplomaUrl = `/diploma.html?nombre=${encodeURIComponent(nombreCompleto)}&curso=${encodeURIComponent(cursoData.titulo || 'Curso sin título')}&codigo=${encodeURIComponent(certificadoData.codigo)}`;
     
     console.log(`URL del diploma generada: ${diplomaUrl}`);
     

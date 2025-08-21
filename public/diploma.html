@@ -58,14 +58,7 @@
       color: #5a3a1a;
     }
 
-    .fecha {
-      position: absolute;
-      top: 520px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 18px;
-      color: #5a3a1a;
-    }
+
 
     .codigo {
       position: absolute;
@@ -104,7 +97,6 @@
     <img src="/images/diploma.jpg" alt="Diploma base">
     <div class="nombre" id="nombreDiploma"></div>
     <div class="curso" id="cursoDiploma"></div>
-    <div class="fecha" id="fechaDiploma"></div>
     <div class="codigo" id="codigoDiploma"></div>
   </div>
 
@@ -121,13 +113,25 @@
     const params = new URLSearchParams(window.location.search);
     const nombre = params.get('nombre') || 'Nombre del Estudiante';
     const curso = params.get('curso') || 'Nombre del Curso';
-    const fecha = params.get('fecha') || new Date().toLocaleDateString();
     const codigo = params.get('codigo') || 'CERT-0000';
+    
+    // Obtener fecha actual formateada
+    const obtenerFechaFormateada = () => {
+      const fecha = new Date();
+      const opciones = { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric'
+      };
+      return fecha.toLocaleDateString('es-ES', opciones);
+    };
+    
+    const fechaFormateada = obtenerFechaFormateada();
 
     // Actualizar el diploma
     document.getElementById('nombreDiploma').textContent = nombre;
     document.getElementById('cursoDiploma').textContent = curso;
-    document.getElementById('fechaDiploma').textContent = `Fecha: ${fecha}`;
+    document.getElementById('fechaDiploma').textContent = `Fecha: ${fechaFormateada}`;
     document.getElementById('codigoDiploma').textContent = `Código: ${codigo}`;
 
     // Función para descargar el diploma como PDF
