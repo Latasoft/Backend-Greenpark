@@ -10,6 +10,112 @@ const parseFecha = (fechaStr) => {
   return isNaN(fecha.getTime()) ? null : fecha;
 };
 
+// Función auxiliar para calcular y actualizar el progreso de un usuario en un curso
+const actualizarProgresoCurso = async (usuarioId, cursoId, curso) => {
+  try {
+    console.log(`Actualizando progreso para usuario ${usuarioId} en curso ${cursoId}`);
+    
+    // 1. Obtener todos los resultados de quiz de este usuario para este curso
+    const resultadosSnapshot = await db.collection("respuestasQuiz")
+      .where("usuarioId", "==", usuarioId)
+      .where("cursoId", "==", cursoId)
+      .get();
+    
+    console.log(`Se encontraron ${resultadosSnapshot.size} resultados de quiz`);
+    
+    // 2. Identificar los módulos aprobados (70% o más)
+    const modulosCompletados = new Set();
+    resultadosSnapshot.forEach(doc => {
+      const data = doc.data();
+      console.log(`Quiz para módulo ${data.moduloIndex}: ${data.porcentaje}%`);
+      if (data.porcentaje >= 70) { // 70% es aprobado
+        modulosCompletados.add(data.moduloIndex);
+      }
+    });
+    
+    console.log(`Módulos completados: ${Array.from(modulosCompletados).join(', ')}`);
+    
+    // 3. Calcular el progreso considerando solo módulos con quiz
+    let modulosConQuiz = [];
+    try {
+      modulosConQuiz = curso.modulos.filter(m => {
+        const tieneQuiz = m.quiz && 
+                         (Array.isArray(m.quiz.preguntas) ? m.quiz.preguntas.length > 0 : false) ||
+                         (Array.isArray(m.quiz) ? m.quiz.length > 0 : false);
+        return tieneQuiz;
+      });
+    } catch (err) {
+      console.error("Error al filtrar módulos con quiz:", err);
+      modulosConQuiz = [];
+    }
+    
+    const totalModulosConQuiz = modulosConQuiz.length;
+    console.log(`Total de módulos con quiz: ${totalModulosConQuiz}`);
+    
+    // Si no hay módulos con quiz, el curso está completo
+    if (totalModulosConQuiz === 0) {
+      console.log(`El curso ${cursoId} no tiene módulos con quiz, marcando como 100%`);
+      // Actualizar como 100% completado
+      const usuarioCursoRef = db
+        .collection('cursos')
+        .doc(cursoId)
+        .collection('usuariosCurso')
+        .doc(usuarioId);
+        
+      await usuarioCursoRef.set(
+        { 
+          progreso: 100,
+          completado: true,
+          modulosCompletados: [],
+          modulosTotal: 0,
+          actualizadoEn: admin.firestore.FieldValue.serverTimestamp() 
+        },
+        { merge: true }
+      );
+      return { progreso: 100, modulosCompletados: [], totalModulos: 0 };
+    }
+    
+    // Calcular el progreso
+    const progreso = Math.round((modulosCompletados.size / totalModulosConQuiz) * 100);
+    console.log(`Progreso calculado: ${modulosCompletados.size}/${totalModulosConQuiz} = ${progreso}%`);
+    
+    // 4. Actualizar el documento de progreso del usuario
+    const usuarioCursoRef = db
+      .collection('cursos')
+      .doc(cursoId)
+      .collection('usuariosCurso')
+      .doc(usuarioId);
+    
+    // Determinar si el curso está completado
+    const completado = modulosCompletados.size >= totalModulosConQuiz;
+    
+    await usuarioCursoRef.set(
+      { 
+        progreso,
+        completado,
+        modulosCompletados: Array.from(modulosCompletados),
+        modulosTotal: totalModulosConQuiz,
+        actualizadoEn: admin.firestore.FieldValue.serverTimestamp(),
+        ...(completado ? { fechaCompletado: admin.firestore.FieldValue.serverTimestamp() } : {})
+      },
+      { merge: true }
+    );
+    
+    console.log(`Progreso actualizado para usuario ${usuarioId} en curso ${cursoId}: ${progreso}% (${modulosCompletados.size}/${totalModulosConQuiz} módulos)`);
+    console.log(`Curso marcado como ${completado ? 'completado' : 'en progreso'}`);
+    
+    return { 
+      progreso, 
+      modulosCompletados: Array.from(modulosCompletados), 
+      totalModulos: totalModulosConQuiz,
+      completado 
+    };
+  } catch (error) {
+    console.error("Error en actualizarProgresoCurso:", error);
+    return null;
+  }
+};
+
 // Almacenamiento en memoria para multer
 const storage = multer.memoryStorage();
 
@@ -338,55 +444,23 @@ exports.responderQuiz = async (req, res) => {
       resultadoRef = await db.collection("respuestasQuiz").add(resultado);
     }
 
-    // También actualizamos el registro en usuariosCurso para mantener consistencia
+    // Actualizar el progreso del usuario en el curso
+    let progresoActualizado = null;
     try {
-      // Obtener todos los resultados de este usuario para este curso
-      const resultadosSnapshot = await db.collection("respuestasQuiz")
-        .where("usuarioId", "==", req.user.id)
-        .where("cursoId", "==", cursoId)
-        .get();
-      
-      // Calcular el total de módulos completados
-      const modulosCompletados = new Set();
-      resultadosSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.porcentaje >= 70) { // Asumimos que 70% es aprobado
-          modulosCompletados.add(data.moduloIndex);
-        }
-      });
-      
-      // Calcular el progreso
-      const totalModulos = curso.modulos.filter(m => m.quiz && m.quiz.length > 0).length;
-      const progreso = totalModulos > 0 
-        ? Math.round((modulosCompletados.size / totalModulos) * 100) 
-        : 0;
-      
-      // Actualizar en la estructura correcta
-      const usuarioCursoRef = db
-        .collection('cursos')
-        .doc(cursoId)
-        .collection('usuariosCurso')
-        .doc(req.user.id);
-        
-      await usuarioCursoRef.set(
-        { 
-          progreso,
-          modulosCompletados: Array.from(modulosCompletados),
-          actualizadoEn: admin.firestore.FieldValue.serverTimestamp() 
-        },
-        { merge: true }
-      );
-      
-      console.log(`Progreso actualizado para usuario ${req.user.id} en curso ${cursoId}: ${progreso}%`);
+      progresoActualizado = await actualizarProgresoCurso(req.user.id, cursoId, curso);
+      console.log('Progreso actualizado:', progresoActualizado);
     } catch (error) {
-      console.error("Error al actualizar progreso en usuariosCurso:", error);
+      console.error("Error al actualizar progreso del usuario:", error);
       // No fallamos la petición principal por esto
     }
 
     res.status(201).json({
       id: resultadoRef.id,
       ...resultado,
-      progreso: resultado.porcentaje // Incluimos el progreso del módulo en la respuesta
+      progreso: resultado.porcentaje, // Progreso de este módulo específico
+      progresoCurso: progresoActualizado?.progreso || 0, // Progreso general del curso
+      modulosCompletados: progresoActualizado?.modulosCompletados || [],
+      totalModulos: progresoActualizado?.totalModulos || curso.modulos.length
     });
   } catch (err) {
     console.error("Error al responder quiz:", err);
@@ -837,7 +911,7 @@ exports.obtenerParticipantesCurso = async (req, res) => {
         const usuarioId = data.usuarioId;
 
         // Aquí busca en la colección users por usuarioId
-        const usuarioDoc = await db.collection("users").doc(usuarioId).get();
+        const usuarioDoc = await db.collection('users').doc(usuarioId).get();
         const usuarioData = usuarioDoc.exists ? usuarioDoc.data() : {};
 
         return {
@@ -901,27 +975,58 @@ exports.obtenerCursosPublicoPorTipo = async (req, res) => {
 
 exports.actualizarProgresoCurso = async (req, res) => {
   const { cursoId, usuarioId } = req.params;
-  const { progreso } = req.body;
+  const { progreso, forzarProgreso } = req.body;
 
   console.log("Actualizar progreso - Params:", { cursoId, usuarioId });
   console.log("Actualizar progreso - Body:", req.body);
 
-  if (typeof progreso !== 'number' || progreso < 0 || progreso > 100) {
-    return res.status(400).json({ mensaje: 'Progreso inválido. Debe ser un número entre 0 y 100.' });
-  }
-
   try {
+    // Si se solicita forzar un valor de progreso específico
+    if (forzarProgreso === true && typeof progreso === 'number') {
+      if (progreso < 0 || progreso > 100) {
+        return res.status(400).json({ mensaje: 'Progreso inválido. Debe ser un número entre 0 y 100.' });
+      }
+      
+      const usuarioCursoRef = db
+        .collection('cursos')
+        .doc(cursoId)
+        .collection('usuariosCurso')
+        .doc(usuarioId);
+
+      await usuarioCursoRef.set(
+        { progreso, actualizadoEn: admin.firestore.FieldValue.serverTimestamp() },
+        { merge: true }
+      );
+
+      console.log(`Progreso forzado a ${progreso}% para usuario ${usuarioId} en curso ${cursoId}`);
+    } else {
+      // Cálculo automático de progreso basado en quiz completados
+      // Obtener información del curso primero
+      const cursoDoc = await db.collection('cursos').doc(cursoId).get();
+      
+      if (!cursoDoc.exists) {
+        return res.status(404).json({ mensaje: 'Curso no encontrado' });
+      }
+      
+      const curso = cursoDoc.data();
+      
+      // Usar la función auxiliar para actualizar el progreso
+      const resultado = await actualizarProgresoCurso(usuarioId, cursoId, curso);
+      
+      if (!resultado) {
+        return res.status(500).json({ mensaje: 'Error al calcular el progreso del curso' });
+      }
+      
+      console.log(`Progreso calculado automáticamente: ${resultado.progreso}% (${resultado.modulosCompletados.length}/${resultado.totalModulos} módulos)`);
+    }
+    
+    // Obtener los datos actualizados para la respuesta
     const usuarioCursoRef = db
       .collection('cursos')
       .doc(cursoId)
       .collection('usuariosCurso')
       .doc(usuarioId);
-
-    await usuarioCursoRef.set(
-      { progreso, actualizadoEn: admin.firestore.FieldValue.serverTimestamp() },
-      { merge: true }
-    );
-
+      
     const updatedDoc = await usuarioCursoRef.get();
     console.log("Documento actualizado:", updatedDoc.data());
 
@@ -1084,51 +1189,63 @@ exports.finalizarCurso = async (req, res) => {
     
     let usuarioCursoData = {};
     
-    // Si no existe el documento de progreso, lo creamos con progreso 100%
+    // Get user course progress
     if (!usuarioCursoDoc.exists) {
-      console.log(`No se encontró registro de progreso para usuario ${usuarioId} en curso ${cursoId}. Creando uno nuevo.`);
-      
-      // Para propósitos de depuración, generamos el certificado de todas formas
-      await usuarioCursoRef.set({
-        progreso: 100,
-        completado: true,
-        fechaCompletado: admin.firestore.FieldValue.serverTimestamp()
+      console.log(`No se encontró registro de progreso para usuario ${usuarioId} en curso ${cursoId}.`);
+      return res.status(404).json({ 
+        mensaje: 'No se encontró registro de progreso para este usuario y curso',
+        error: 'no_progress_record'
       });
-      
-      console.log('Documento de progreso creado con progreso 100%');
-      
-      // Obtener los datos recién creados
-      usuarioCursoData = {
-        progreso: 100,
-        completado: true,
-        fechaCompletado: new Date()
-      };
-    } else {
-      usuarioCursoData = usuarioCursoDoc.data();
-      console.log('Documento de progreso encontrado:', usuarioCursoData);
-      
-      // Si el progreso no es 100%, lo actualizamos
-      if (!usuarioCursoData.progreso || usuarioCursoData.progreso < 100) {
-        console.log(`Advertencia: El progreso actual es del ${usuarioCursoData.progreso || 0}%, pero se generará el certificado de todas formas.`);
-        
-        // Actualizar a 100% para generar el certificado
-        await usuarioCursoRef.set({
-          progreso: 100,
-          completado: true,
-          fechaCompletado: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        
-        console.log('Progreso actualizado a 100%');
-        
-        // Actualizar los datos locales
-        usuarioCursoData = {
-          ...usuarioCursoData,
-          progreso: 100,
-          completado: true,
-          fechaCompletado: new Date()
-        };
+    } 
+    
+    usuarioCursoData = usuarioCursoDoc.data();
+    console.log('Documento de progreso encontrado:', usuarioCursoData);
+    
+    // Obtener resultados de quiz para verificar módulos completados
+    const resultadosSnapshot = await db.collection("respuestasQuiz")
+      .where("usuarioId", "==", usuarioId)
+      .where("cursoId", "==", cursoId)
+      .get();
+
+    // Identificar módulos aprobados
+    const modulosAprobados = new Set();
+    resultadosSnapshot.forEach(doc => {
+      const data = doc.data();
+      if (data.porcentaje >= 70) { // 70% es aprobado
+        modulosAprobados.add(data.moduloIndex);
       }
+    });
+    
+    // Verificar módulos con quiz
+    const modulosConQuiz = cursoData.modulos.filter(m => m.quiz && Array.isArray(m.quiz?.preguntas) && m.quiz.preguntas.length > 0);
+    const totalModulosConQuiz = modulosConQuiz.length;
+    
+    // Permitir finalizar si todos los módulos con quiz están aprobados
+    const todosModulosAprobados = totalModulosConQuiz > 0 && modulosAprobados.size >= totalModulosConQuiz;
+
+    // Solo verificar progreso si no todos los módulos están aprobados
+    if (!todosModulosAprobados && (!usuarioCursoData.progreso || usuarioCursoData.progreso < 100)) {
+      console.log(`El progreso actual es del ${usuarioCursoData.progreso || 0}%. Se requiere 100% para finalizar el curso.`);
+      return res.status(400).json({ 
+        mensaje: `El progreso actual es del ${usuarioCursoData.progreso || 0}%. Se requiere 100% para finalizar el curso.`,
+        progreso: usuarioCursoData.progreso || 0
+      });
     }
+    
+    // Actualizar el registro para marcar como completado y asegurar progreso 100%
+    await usuarioCursoRef.set({
+      completado: true,
+      progreso: 100, // Establecer explícitamente el progreso al 100%
+      fechaCompletado: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    
+    // Actualizar los datos locales
+    usuarioCursoData = {
+      ...usuarioCursoData,
+      completado: true,
+      progreso: 100, // Mantener consistencia en los datos locales
+      fechaCompletado: new Date()
+    };
     
     // Función para buscar el nombre completo de un usuario
     const buscarNombreUsuario = async (id) => {
@@ -1240,8 +1357,13 @@ exports.finalizarCurso = async (req, res) => {
       };
       
       console.log('Generando nuevo certificado:', certificadoData);
-      certificadoRef = await db.collection('certificados').add(certificadoData);
-      console.log(`Certificado creado con ID: ${certificadoRef.id}`);
+      try {
+        certificadoRef = await db.collection('certificados').add(certificadoData);
+        console.log(`Certificado creado con ID: ${certificadoRef.id}`);
+      } catch (err) {
+        console.error('Error al crear certificado:', err);
+        throw new Error(`Error al crear certificado: ${err.message}`);
+      }
     }
     
     // Generar URL del diploma sin fecha (se genera en la plantilla)
@@ -1249,12 +1371,25 @@ exports.finalizarCurso = async (req, res) => {
     
     console.log(`URL del diploma generada: ${diplomaUrl}`);
     
+    // Asegurémonos de tener un ID de certificado válido
+    const certificadoId = certificadoRef ? certificadoRef.id : null;
+    
+    if (!certificadoId) {
+      console.error('No se obtuvo un ID válido para el certificado');
+      return res.status(500).json({ 
+        mensaje: 'Error al generar certificado: ID no válido',
+        error: 'invalid_certificate_id'
+      });
+    }
+    
+    console.log(`Enviando respuesta con certificadoId: ${certificadoId}`);
+    
     return res.status(200).json({
       mensaje: 'Curso finalizado exitosamente',
       porcentajeCompletado: 100,
       fechaCompletado: new Date(),
       certificado: {
-        id: certificadoRef.id,
+        id: certificadoId,
         ...certificadoData
       },
       diplomaUrl
@@ -1266,6 +1401,15 @@ exports.finalizarCurso = async (req, res) => {
     let detallesError = '';
     if (error.code) detallesError += `Código: ${error.code}. `;
     if (error.details) detallesError += `Detalles: ${error.details}. `;
+    
+    // Verificar si el error es relacionado con el certificado
+    if (error.message && error.message.includes('certificado')) {
+      return res.status(500).json({
+        mensaje: 'Error al generar el certificado. Por favor, intenta nuevamente.',
+        error: error.message,
+        detalles: detallesError
+      });
+    }
     
     return res.status(500).json({ 
       mensaje: 'Error al finalizar curso', 
