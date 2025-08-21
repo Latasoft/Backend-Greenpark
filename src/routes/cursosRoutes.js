@@ -19,7 +19,8 @@ const {
   getTopCursos, // Cursos destacados
   actualizarCurso, 
   eliminarArchivoModulo,
-  uploadCoursePdf // nuevo controlador
+  uploadCoursePdf, // nuevo controlador
+  finalizarCurso
 } = require("../controllers/cursosController");
 
 const authenticate = require("../middlewares/authenticate");
@@ -29,6 +30,7 @@ router.get("/lista", obtenerCursos);
 router.get("/publico/:tipo", obtenerCursosPublicoPorTipo);
 router.get("/usuarios", listarUsuarios);
 router.get("/destacados", getTopCursos);
+router.post("/finalizar", authenticate, finalizarCurso);
 
 // Rutas que requieren autenticación
 router.get("/usuario-id/:usuarioId", authenticate, obtenerCursosUsuario);

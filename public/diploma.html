@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Diploma</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .formulario {
+      margin-bottom: 20px;
+    }
+
+    .formulario input {
+      padding: 8px;
+      margin: 5px;
+      font-size: 16px;
+    }
+
+    .diploma-container {
+      position: relative;
+      width: 1000px;  /* ajusta al tamaño real de tu imagen */
+      height: 750px;  /* ajusta al tamaño real de tu imagen */
+      margin: auto;
+      border: 2px solid #ccc;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    .diploma-container img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .nombre {
+      position: absolute;
+      top: 310px;   /* ajusta la posición vertical */
+      left: 50%;    /* centrado horizontal */
+      transform: translateX(-50%);
+      font-size: 40px;
+      font-weight: bold;
+      color: #4a2e12;
+    }
+
+    .curso {
+      position: absolute;
+      top: 440px; /* antes 420px, ahora más abajo */
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 22px;
+      font-style: italic;
+      color: #5a3a1a;
+    }
+
+    .fecha {
+      position: absolute;
+      top: 520px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 18px;
+      color: #5a3a1a;
+    }
+
+    .codigo {
+      position: absolute;
+      bottom: 20px;
+      right: 30px;
+      font-size: 12px;
+      color: #888;
+    }
+
+    .acciones {
+      margin-top: 30px;
+    }
+
+    .btn-descargar {
+      background-color: #1A3D33;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px;
+      text-decoration: none;
+    }
+
+    .btn-descargar:hover {
+      background-color: #8BAE52;
+    }
+  </style>
+</head>
+<body>
+  <h1>Certificado de Finalización</h1>
+  
+  <!-- Diploma -->
+  <div class="diploma-container">
+    <img src="/images/diploma.jpg" alt="Diploma base">
+    <div class="nombre" id="nombreDiploma"></div>
+    <div class="curso" id="cursoDiploma"></div>
+    <div class="fecha" id="fechaDiploma"></div>
+    <div class="codigo" id="codigoDiploma"></div>
+  </div>
+
+  <div class="acciones">
+    <button class="btn-descargar" onclick="descargarDiploma()">Descargar Diploma</button>
+    <a class="btn-descargar" href="/api/cursos">Volver a Cursos</a>
+  </div>
+
+  <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+
+  <script>
+    // Obtener parámetros de la URL
+    const params = new URLSearchParams(window.location.search);
+    const nombre = params.get('nombre') || 'Nombre del Estudiante';
+    const curso = params.get('curso') || 'Nombre del Curso';
+    const fecha = params.get('fecha') || new Date().toLocaleDateString();
+    const codigo = params.get('codigo') || 'CERT-0000';
+
+    // Actualizar el diploma
+    document.getElementById('nombreDiploma').textContent = nombre;
+    document.getElementById('cursoDiploma').textContent = curso;
+    document.getElementById('fechaDiploma').textContent = `Fecha: ${fecha}`;
+    document.getElementById('codigoDiploma').textContent = `Código: ${codigo}`;
+
+    // Función para descargar el diploma como PDF
+    function descargarDiploma() {
+      const diplomaContainer = document.querySelector('.diploma-container');
+      
+      // Mostrar mensaje de espera
+      const mensaje = document.createElement('p');
+      mensaje.textContent = 'Generando PDF, por favor espera...';
+      document.body.appendChild(mensaje);
+
+      html2canvas(diplomaContainer, {
+        scale: 2,
+        useCORS: true,
+        logging: false
+      }).then(canvas => {
+        const imgData = canvas.toDataURL('image/jpeg', 1.0);
+        
+        // Usar jsPDF
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: 'a4'
+        });
+        
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        
+        // Generar nombre de archivo
+        const nombreArchivo = `Diploma_${curso.replace(/\s+/g, '_')}_${nombre.replace(/\s+/g, '_')}.pdf`;
+        
+        // Descargar PDF
+        pdf.save(nombreArchivo);
+        
+        // Eliminar mensaje de espera
+        document.body.removeChild(mensaje);
+      });
+    }
+  </script>
+</body>
+</html>

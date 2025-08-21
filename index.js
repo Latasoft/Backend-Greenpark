@@ -16,6 +16,9 @@ const quizRoutes = require('./src/routes/quizRoutes'); // Ruta para respuestas d
 // Importar ruta para archivos (URLs firmadas Cloudinary)
 const archivosRoutes = require('./src/routes/archivosRoutes'); // Asegúrate que esta ruta existe y exporta el router
 
+// Importar ruta para certificados
+const certificadosRoutes = require('./src/routes/certificadosRoutes'); // Ruta para certificados
+
 // Configuración CORS
 const allowedOrigins = [
   'http://localhost:5174',
@@ -56,8 +59,9 @@ app.use((req, res, next) => {
 // Middleware para parsear JSON
 app.use(express.json());
 
-// Ruta pública para acceder a PDFs u otros archivos estáticos
+// Rutas públicas para acceder a archivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Rutas existentes
 app.use('/api/auth', authRoutes);
@@ -69,6 +73,9 @@ app.use('/api/quiz', quizRoutes);
 
 // NUEVA RUTA PARA ARCHIVOS
 app.use('/api/archivos', archivosRoutes);
+
+// Ruta para certificados
+app.use('/api/certificados', certificadosRoutes);
 
 // Middleware para loguear peticiones (opcional para debug)
 app.use((req, res, next) => {
