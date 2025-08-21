@@ -564,7 +564,8 @@ exports.obtenerCursosUsuarioLegacy = async (req, res) => {
 // para obtener los cursos del usuario (versión actual)
 exports.obtenerCursosUsuario = async (req, res) => {
   const usuarioId = req.params.usuarioId || req.user.id;
-  console.log("Usuario ID:", usuarioId);
+  const usuarioRol = req.user.rol || 'estudiante'; // Asegúrate que el rol esté en req.user
+  console.log("Usuario ID:", usuarioId, "Rol:", usuarioRol);
 
   try {
     const cursosSnapshot = await db.collection('cursos').get();
@@ -572,33 +573,40 @@ exports.obtenerCursosUsuario = async (req, res) => {
 
     for (const cursoDoc of cursosSnapshot.docs) {
       const cursoId = cursoDoc.id;
+      const cursoData = cursoDoc.data();
 
-      const usuarioCursoRef = db
-        .collection('cursos')
-        .doc(cursoId)
-        .collection('usuariosCurso')
-        .doc(usuarioId);
+      // Filtrar por estado de publicación y rol
+      if (
+        usuarioRol === 'docente' || usuarioRol === 'admin' || usuarioRol === 'superadmin' || usuarioRol === 'root'
+        || (cursoData.estado === 'publicado')
+      ) {
+        const usuarioCursoRef = db
+          .collection('cursos')
+          .doc(cursoId)
+          .collection('usuariosCurso')
+          .doc(usuarioId);
 
-      const usuarioCursoDoc = await usuarioCursoRef.get();
+        const usuarioCursoDoc = await usuarioCursoRef.get();
 
-      if (usuarioCursoDoc.exists) {
-        const cursoData = cursoDoc.data();
-        const usuarioCursoData = usuarioCursoDoc.data();
-        const progreso = usuarioCursoData.progreso ?? 0;
+        if (usuarioCursoDoc.exists) {
+          const usuarioCursoData = usuarioCursoDoc.data();
+          const progreso = usuarioCursoData.progreso ?? 0;
 
-        cursosInscritos.push({
-          id: cursoId,
-          titulo: cursoData.titulo || 'Sin título',
-          descripcion: cursoData.descripcion || '',
-          imagenUrl: cursoData.imagenUrl || '',
-          duracionHoras: cursoData.duracionHoras || 0,
-          porcentajeProgreso: progreso,
-          finalizado: usuarioCursoData.completado || false
-        });
+          cursosInscritos.push({
+            id: cursoId,
+            titulo: cursoData.titulo || 'Sin título',
+            descripcion: cursoData.descripcion || '',
+            imagenUrl: cursoData.imagenUrl || '',
+            duracionHoras: cursoData.duracionHoras || 0,
+            porcentajeProgreso: progreso,
+            finalizado: usuarioCursoData.completado || false,
+            estado: cursoData.estado || 'borrador',
+            rol: usuarioRol
+          });
+        }
       }
     }
-    
-    console.log(`Se encontraron ${cursosInscritos.length} cursos para el usuario ${usuarioId}`);
+    console.log(`Se encontraron ${cursosInscritos.length} cursos para el usuario ${usuarioId} (rol: ${usuarioRol})`);
     return res.status(200).json(cursosInscritos);
   } catch (error) {
     console.error('Error al obtener cursos del usuario:', error);
