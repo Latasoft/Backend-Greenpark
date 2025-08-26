@@ -30,6 +30,7 @@ exports.register = async (req, res) => {
 
     const userRef = db.collection('users').doc();
 
+    // Guardar usuario en la base de datos
     await userRef.set({
       nombre,
       apellido,
@@ -39,6 +40,10 @@ exports.register = async (req, res) => {
       password: hashedPassword,
       aprobado,
       id: userRef.id,
+      fechaRegistro: new Date().toISOString(), // Añadir fecha de registro
+      cursosInscritos: [], // Inicializar lista de cursos inscritos
+      cursosCompletados: [], // Inicializar lista de cursos completados
+      certificaciones: [] // Inicializar certificaciones
     });
 
     res.status(201).json({
@@ -292,6 +297,52 @@ exports.eliminarCursoUsuario = async (req, res) => {
   } catch (error) {
     console.error("Error al eliminar la inscripción:", error);
     return res.status(500).json({ mensaje: "Error interno del servidor." });
+  }
+};
+
+// Get user profile
+exports.getUserProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Check authorization
+    if (req.user.id !== userId && req.user.rol !== 'admin') {
+      return res.status(403).json({ message: 'No autorizado para ver este perfil' });
+    }
+    
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    
+    const userData = userDoc.data();
+    
+    // Formatear respuesta con todos los campos necesarios, usando valores por defecto si no existen
+    const userResponse = {
+      id: userData.id,
+      nombre: userData.nombre || '',
+      apellido: userData.apellido || '', // Asegurar que apellido esté incluido
+      correo: userData.correo || '',
+      rol: userData.rol || 'usuario',
+      fechaNacimiento: userData.fechaNacimiento || null,
+      imagenPerfil: userData.imagenPerfil || null,
+      fechaRegistro: userData.fechaRegistro || null, // Asegurar fecha de registro
+      
+      // Datos de progreso académico
+      cursosInscritos: userData.cursosInscritos || [], // Asegurar cursos inscritos
+      cursosCompletados: userData.cursosCompletados || [], // Asegurar cursos completados
+      certificaciones: userData.certificaciones || [],
+      
+      // Estado del usuario
+      aprobado: userData.aprobado || false
+    };
+    
+    res.status(200).json(userResponse);
+  } catch (error) {
+    console.error('Error al obtener perfil:', error);
+    res.status(500).json({ message: 'Error al obtener perfil del usuario' });
   }
 };
 

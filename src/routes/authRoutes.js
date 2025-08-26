@@ -13,6 +13,7 @@ router.get('/users', authController.listUsers);
 router.delete('/users/:userId', isAdmin, authController.deleteUser);
 router.put('/users/:userId/profile', authenticate, authController.updateUserProfile);
 router.put('/approve/:userId', isAdmin, authController.approveUser);
+router.get('/users/:userId/profile', authenticate, authController.getUserProfile);
 
 // Al final, rutas con parámetros dinámicos menos específicos
 router.get('/:usuarioId/cursos-inscritos', authController.obtenerCursosUsuario);
