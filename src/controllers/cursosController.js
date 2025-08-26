@@ -295,32 +295,61 @@ exports.publicarCurso = async (req, res) => {
 // Obtener el listado de cursos
 exports.obtenerCursos = async (req, res) => {
   try {
-    const snapshot = await db.collection("cursos").orderBy("creadoEn", "desc").get();
+    const { 
+      page = 1, 
+      limit = 9,
+      search = '',
+      sortBy = 'fechaInicio',
+      order = 'desc'
+    } = req.query;
 
-    // Map para hacer promesas de conteo de accesos por curso
-    const cursosConConteo = await Promise.all(snapshot.docs.map(async (doc) => {
-      const cursoData = doc.data();
+    let query = db.collection('cursos');
 
-      // Contar accesos a quiz para este curso (en la subcolección "usuariosQuiz")
-      const accesosSnapshot = await db
-        .collection("cursos")
-        .doc(doc.id)
-        .collection("usuariosQuiz")
-        .get();
+    // Aplicar búsqueda si existe
+    if (search) {
+      query = query.where('titulo', '>=', search)
+                   .where('titulo', '<=', search + '\uf8ff');
+    }
 
-      const cantidadAccesosQuiz = accesosSnapshot.size;
+    // Aplicar ordenamiento
+    query = query.orderBy(sortBy, order);
 
-      return {
+    // Calcular paginación
+    const startAt = (page - 1) * limit;
+    query = query.limit(parseInt(limit));
+    
+    if (startAt > 0) {
+      query = query.offset(startAt);
+    }
+
+    const snapshot = await query.get();
+    
+    // Obtener total de documentos para la paginación
+    const totalDocs = (await db.collection('cursos').get()).size;
+    const totalPages = Math.ceil(totalDocs / limit);
+
+    const cursos = [];
+    snapshot.forEach((doc) => {
+      cursos.push({
         id: doc.id,
-        ...cursoData,
-        cantidadAccesosQuiz,
-      };
-    }));
+        ...doc.data()
+      });
+    });
 
-    res.status(200).json(cursosConConteo);
+    res.status(200).json({
+      cursos,
+      pagination: {
+        total: totalDocs,
+        page: parseInt(page),
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      }
+    });
+
   } catch (error) {
-    console.error("Error al obtener cursos:", error);
-    res.status(500).send("Error interno del servidor");
+    console.error('Error al obtener cursos:', error);
+    res.status(500).json({ mensaje: 'Error interno del servidor' });
   }
 };
 
