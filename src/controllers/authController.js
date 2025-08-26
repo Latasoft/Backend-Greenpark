@@ -189,7 +189,7 @@ exports.deleteUser = async (req, res) => {
 exports.updateUserProfile = async (req, res) => {
   try {
     const { userId } = req.params;
-    const { correo, imagenPerfil } = req.body;
+    const { nombre, apellido, correo, imagenPerfil } = req.body;
 
     // Validar autenticación (puedes adaptarlo según tu middleware)
     if (!req.user || (req.user.id !== userId && req.user.rol !== 'admin')) {
@@ -219,9 +219,26 @@ exports.updateUserProfile = async (req, res) => {
       updates.imagenPerfil = imagenPerfil;
     }
 
+    if (nombre || apellido) {
+      updates.nombre = nombre;
+      updates.apellido = apellido;
+    }
+
     await userRef.update(updates);
 
-    res.json({ message: 'Perfil actualizado correctamente', updates });
+    // Leer el usuario actualizado
+    const updatedUserDoc = await userRef.get();
+    const updatedUser = updatedUserDoc.data();
+
+    res.json({
+      message: "Perfil actualizado correctamente",
+      updates: {
+        nombre: updatedUser.nombre,
+        apellido: updatedUser.apellido,
+        correo: updatedUser.correo,
+        imagenPerfil: updatedUser.imagenPerfil,
+      }
+    });
   } catch (error) {
     console.error('Error al actualizar perfil:', error);
     res.status(500).json({ message: 'Error al actualizar perfil' });
