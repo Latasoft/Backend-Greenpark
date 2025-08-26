@@ -21,5 +21,6 @@ router.delete('/usuario/cursos-inscritos/:cursoId', authenticate, authController
 
 
 
+//cursos completados
 
 module.exports = router;

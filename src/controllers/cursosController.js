@@ -292,6 +292,8 @@ exports.publicarCurso = async (req, res) => {
   }
 };
 
+
+
 // Obtener el listado de cursos
 exports.obtenerCursos = async (req, res) => {
   try {

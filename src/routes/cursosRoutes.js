@@ -28,6 +28,7 @@ const {
 
 const authenticate = require("../middlewares/authenticate");
 
+
 // Rutas públicas
 router.get("/lista", obtenerCursos);
 router.get("/dirigido/:audiencia", obtenerCursosPorAudiencia); // Nueva ruta
