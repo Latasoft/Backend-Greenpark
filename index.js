@@ -27,7 +27,8 @@ const allowedOrigins = [
   'https://greenpark1.netlify.app',
   'https://greenparkacademia.com',
   'http://localhost:5174',
-  'https://greenpark-frontend.netlify.app'
+  'https://greenpark-frontend.netlify.app/',
+  
 ];
 
 app.use(cors({
