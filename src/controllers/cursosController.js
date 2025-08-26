@@ -295,7 +295,7 @@ exports.publicarCurso = async (req, res) => {
 // Obtener el listado de cursos
 exports.obtenerCursos = async (req, res) => {
   try {
-    const { page = 1, limit = 9 } = req.query;
+    const { page = 1, limit = 7 } = req.query;
     const pageNumber = parseInt(page);
     const limitNumber = parseInt(limit);
     const startAt = (pageNumber - 1) * limitNumber;
@@ -306,20 +306,34 @@ exports.obtenerCursos = async (req, res) => {
     const totalSnapshot = await query.count().get();
     const total = totalSnapshot.data().count;
 
-    // Luego obtener los documentos paginados
+    // Obtener los documentos paginados
     const cursosSnapshot = await query
       .orderBy('fechaInicio', 'desc')
       .limit(limitNumber)
       .offset(startAt)
       .get();
 
-    const cursos = [];
-    cursosSnapshot.forEach(doc => {
-      cursos.push({
+    // Procesar cada curso y obtener su cantidad de participantes
+    const cursosPromises = cursosSnapshot.docs.map(async (doc) => {
+      const cursoData = doc.data();
+      
+      // Obtener cantidad de participantes para este curso
+      const participantesSnapshot = await db
+        .collection('cursos')
+        .doc(doc.id)
+        .collection('usuariosCurso')
+        .count()
+        .get();
+
+      return {
         id: doc.id,
-        ...doc.data()
-      });
+        ...cursoData,
+        cantidadParticipantes: participantesSnapshot.data().count || 0
+      };
     });
+
+    // Esperar a que se resuelvan todas las promesas
+    const cursos = await Promise.all(cursosPromises);
 
     res.json({
       cursos,
