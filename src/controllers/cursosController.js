@@ -1558,3 +1558,31 @@ exports.obtenerCursosPorAudiencia = async (req, res) => {
     });
   }
 };
+
+// Agregar nueva función para verificar inscripción
+exports.verificarInscripcion = async (req, res) => {
+  const { cursoId } = req.params;
+  const usuarioId = req.user.id; // Obtenido del middleware authenticate
+
+  try {
+    const usuarioCursoRef = db
+      .collection('cursos')
+      .doc(cursoId)
+      .collection('usuariosCurso')
+      .doc(usuarioId);
+
+    const doc = await usuarioCursoRef.get();
+    
+    res.json({
+      inscrito: doc.exists,
+      mensaje: doc.exists ? 'Usuario inscrito en el curso' : 'Usuario no inscrito'
+    });
+
+  } catch (error) {
+    console.error('Error al verificar inscripción:', error);
+    res.status(500).json({ 
+      mensaje: 'Error al verificar inscripción',
+      error: error.message 
+    });
+  }
+};

@@ -22,7 +22,8 @@ const {
   eliminarArchivoModulo,
   uploadCoursePdf, // nuevo controlador
   finalizarCurso,
-  enrollUser // nuevo controlador para inscribir usuario
+  enrollUser, // nuevo controlador para inscribir usuario
+  verificarInscripcion // nuevo controlador para verificar inscripción
 } = require("../controllers/cursosController");
 
 const authenticate = require("../middlewares/authenticate");
@@ -35,6 +36,7 @@ router.get("/usuarios", listarUsuarios);
 router.get("/destacados", getTopCursos);
 router.post("/finalizar", authenticate, finalizarCurso);
 router.post('/:cursoId/inscribir', authenticate, enrollUser);
+router.get("/:cursoId/verificar-inscripcion", authenticate, verificarInscripcion); // Nueva ruta para verificar inscripción
 
 // Rutas que requieren autenticación
 router.get("/usuario-id/:usuarioId", authenticate, obtenerCursosUsuario);
