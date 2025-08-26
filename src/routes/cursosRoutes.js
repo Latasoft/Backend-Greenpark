@@ -20,7 +20,8 @@ const {
   actualizarCurso, 
   eliminarArchivoModulo,
   uploadCoursePdf, // nuevo controlador
-  finalizarCurso
+  finalizarCurso,
+  enrollUser // nuevo controlador para inscribir usuario
 } = require("../controllers/cursosController");
 
 const authenticate = require("../middlewares/authenticate");
@@ -31,6 +32,7 @@ router.get("/publico/:tipo", obtenerCursosPublicoPorTipo);
 router.get("/usuarios", listarUsuarios);
 router.get("/destacados", getTopCursos);
 router.post("/finalizar", authenticate, finalizarCurso);
+router.post('/:cursoId/inscribir', authenticate, enrollUser);
 
 // Rutas que requieren autenticación
 router.get("/usuario-id/:usuarioId", authenticate, obtenerCursosUsuario);
@@ -50,6 +52,9 @@ router.delete('/:cursoId/modulos/:moduloId/archivo', authenticate, eliminarArchi
 router.put("/:id/publicar", authenticate, publicarCurso);
 router.post("/", uploadMiddleware, crearCurso);
 router.delete("/:cursoId", eliminarCurso);
+
+// Nueva ruta para inscribir/comenzar curso
+router.post('/cursos/:cursoId/inscribir', authenticate, enrollUser);
 
 // Obtener curso por ID (última ruta para evitar conflictos)
 router.get("/:cursoId", obtenerCurso);

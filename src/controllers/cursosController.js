@@ -1427,3 +1427,49 @@ exports.finalizarCurso = async (req, res) => {
     });
   }
 };
+
+exports.enrollUser = async (req, res) => {
+  try {
+    const { cursoId } = req.params;
+    const usuarioId = req.user?.id || req.body.usuarioId;
+    if (!usuarioId) return res.status(400).json({ message: 'usuarioId requerido' });
+
+    const now = new Date().toISOString();
+
+    const usuarioRef = db
+      .collection('cursos')
+      .doc(cursoId)
+      .collection('usuariosCurso')
+      .doc(usuarioId);
+
+    const payload = {
+      usuarioId,
+      progreso: 0,
+      registradoEn: now,
+      actualizadoEn: now
+    };
+
+    await usuarioRef.set(payload, { merge: true });
+
+    // Opcional: agregar curso al documento del usuario (si usas admin.firestore.FieldValue)
+    try {
+      const admin = require('firebase-admin');
+      await db.collection('users').doc(usuarioId).update({
+        cursosInscritos: admin.firestore.FieldValue.arrayUnion(cursoId)
+      });
+    } catch (e) {
+      // Fallback: leer y mergear manualmente si no está disponible arrayUnion
+      const userRef = db.collection('users').doc(usuarioId);
+      const userDoc = await userRef.get();
+      const current = userDoc.exists ? (userDoc.data().cursosInscritos || []) : [];
+      if (!current.includes(cursoId)) {
+        await userRef.set({ cursosInscritos: [...current, cursoId] }, { merge: true });
+      }
+    }
+
+    return res.status(200).json({ message: 'Usuario inscrito', data: payload });
+  } catch (error) {
+    console.error('Error al inscribir usuario en curso:', error);
+    return res.status(500).json({ message: 'Error al inscribir usuario', error: error.message });
+  }
+};
