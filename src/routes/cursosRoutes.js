@@ -5,7 +5,8 @@ const {
   crearCurso, 
   responderQuiz, 
   obtenerCurso, 
-  obtenerCursos, 
+  obtenerCursos,
+  obtenerCursosPorAudiencia, // Agregar esta línea
   eliminarCurso, 
   obtenerCursosUsuario, 
   registrarAccesoQuiz, 
@@ -28,6 +29,7 @@ const authenticate = require("../middlewares/authenticate");
 
 // Rutas públicas
 router.get("/lista", obtenerCursos);
+router.get("/dirigido/:audiencia", obtenerCursosPorAudiencia); // Nueva ruta
 router.get("/publico/:tipo", obtenerCursosPublicoPorTipo);
 router.get("/usuarios", listarUsuarios);
 router.get("/destacados", getTopCursos);

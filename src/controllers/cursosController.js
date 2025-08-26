@@ -1502,3 +1502,59 @@ exports.enrollUser = async (req, res) => {
     return res.status(500).json({ message: 'Error al inscribir usuario', error: error.message });
   }
 };
+
+exports.obtenerCursosPorAudiencia = async (req, res) => {
+  try {
+    const { audiencia } = req.params;
+    const { page = 1, limit = 9 } = req.query;
+
+    // Simplificar la consulta para evitar necesitar índice compuesto
+    let query = db.collection('cursos')
+                  .where('dirigidoA', '==', audiencia)
+                  .where('estado', '==', 'publicado');
+
+    // Primero obtener todos los documentos
+    const snapshot = await query.get();
+    const cursos = [];
+    
+    snapshot.forEach(doc => {
+      cursos.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+
+    // Ordenar en memoria
+    cursos.sort((a, b) => {
+      const fechaA = new Date(a.fechaInicio).getTime();
+      const fechaB = new Date(b.fechaInicio).getTime();
+      return fechaB - fechaA; // ordenar por fecha descendente
+    });
+
+    // Aplicar paginación en memoria
+    const startIndex = (parseInt(page) - 1) * parseInt(limit);
+    const endIndex = startIndex + parseInt(limit);
+    const cursosPaginados = cursos.slice(startIndex, endIndex);
+
+    const totalDocs = cursos.length;
+    const totalPages = Math.ceil(totalDocs / parseInt(limit));
+
+    res.status(200).json({
+      cursos: cursosPaginados,
+      pagination: {
+        total: totalDocs,
+        page: parseInt(page),
+        totalPages,
+        hasNextPage: parseInt(page) < totalPages,
+        hasPrevPage: parseInt(page) > 1
+      }
+    });
+
+  } catch (error) {
+    console.error('Error al obtener cursos por audiencia:', error);
+    res.status(500).json({ 
+      mensaje: 'Error al obtener los cursos',
+      error: error.message 
+    });
+  }
+};
