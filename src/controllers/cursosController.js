@@ -295,46 +295,41 @@ exports.publicarCurso = async (req, res) => {
 // Obtener el listado de cursos
 exports.obtenerCursos = async (req, res) => {
   try {
-    const { page = 1, limit = 9, search = '', sortOrder = 'desc' } = req.query;
-    const userId = req.user?.id; // Obtenido del token
+    const { page = 1, limit = 9 } = req.query;
+    const pageNumber = parseInt(page);
+    const limitNumber = parseInt(limit);
+    const startAt = (pageNumber - 1) * limitNumber;
 
-    let query = db.collection('cursos')
-                  .where('estado', '==', 'publicado')
-                  .orderBy('fechaInicio', sortOrder);
+    let query = db.collection('cursos');
 
-    // Aplicar paginación
-    const startAt = (parseInt(page) - 1) * parseInt(limit);
-    const cursosSnapshot = await query.limit(parseInt(limit))
-                                    .offset(startAt)
-                                    .get();
+    // Primero obtener el total de documentos
+    const totalSnapshot = await query.count().get();
+    const total = totalSnapshot.data().count;
 
-    // Obtener inscripciones en una sola operación
-    const inscripcionesSnapshot = userId ? 
-      await db.collection('cursos')
-             .where('usuariosCurso', 'array-contains', userId)
-             .get() : null;
-
-    const inscripciones = new Set();
-    if (inscripcionesSnapshot) {
-      inscripcionesSnapshot.forEach(doc => inscripciones.add(doc.id));
-    }
+    // Luego obtener los documentos paginados
+    const cursosSnapshot = await query
+      .orderBy('fechaInicio', 'desc')
+      .limit(limitNumber)
+      .offset(startAt)
+      .get();
 
     const cursos = [];
     cursosSnapshot.forEach(doc => {
       cursos.push({
         id: doc.id,
-        ...doc.data(),
-        inscrito: inscripciones.has(doc.id)
+        ...doc.data()
       });
     });
 
     res.json({
       cursos,
       pagination: {
-        page: parseInt(page),
-        totalPages: Math.ceil(cursos.length / parseInt(limit)),
-        hasNextPage: cursos.length === parseInt(limit),
-        hasPrevPage: page > 1
+        total,
+        page: pageNumber,
+        limit: limitNumber,
+        totalPages: Math.ceil(total / limitNumber),
+        hasNextPage: startAt + cursos.length < total,
+        hasPrevPage: pageNumber > 1
       }
     });
 
