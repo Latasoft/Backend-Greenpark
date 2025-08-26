@@ -295,64 +295,54 @@ exports.publicarCurso = async (req, res) => {
 // Obtener el listado de cursos
 exports.obtenerCursos = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 9,
-      search = '',
-      sortBy = 'fechaInicio',
-      order = 'desc'
-    } = req.query;
+    const { page = 1, limit = 9, search = '', sortOrder = 'desc' } = req.query;
+    const userId = req.user?.id; // Obtenido del token
 
-    let query = db.collection('cursos');
+    let query = db.collection('cursos')
+                  .where('estado', '==', 'publicado')
+                  .orderBy('fechaInicio', sortOrder);
 
-    // Aplicar búsqueda si existe
-    if (search) {
-      query = query.where('titulo', '>=', search)
-                   .where('titulo', '<=', search + '\uf8ff');
+    // Aplicar paginación
+    const startAt = (parseInt(page) - 1) * parseInt(limit);
+    const cursosSnapshot = await query.limit(parseInt(limit))
+                                    .offset(startAt)
+                                    .get();
+
+    // Obtener inscripciones en una sola operación
+    const inscripcionesSnapshot = userId ? 
+      await db.collection('cursos')
+             .where('usuariosCurso', 'array-contains', userId)
+             .get() : null;
+
+    const inscripciones = new Set();
+    if (inscripcionesSnapshot) {
+      inscripcionesSnapshot.forEach(doc => inscripciones.add(doc.id));
     }
-
-    // Aplicar ordenamiento
-    query = query.orderBy(sortBy, order);
-
-    // Calcular paginación
-    const startAt = (page - 1) * limit;
-    query = query.limit(parseInt(limit));
-    
-    if (startAt > 0) {
-      query = query.offset(startAt);
-    }
-
-    const snapshot = await query.get();
-    
-    // Obtener total de documentos para la paginación
-    const totalDocs = (await db.collection('cursos').get()).size;
-    const totalPages = Math.ceil(totalDocs / limit);
 
     const cursos = [];
-    snapshot.forEach((doc) => {
+    cursosSnapshot.forEach(doc => {
       cursos.push({
         id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        inscrito: inscripciones.has(doc.id)
       });
     });
 
-    res.status(200).json({
+    res.json({
       cursos,
       pagination: {
-        total: totalDocs,
         page: parseInt(page),
-        totalPages,
-        hasNextPage: page < totalPages,
+        totalPages: Math.ceil(cursos.length / parseInt(limit)),
+        hasNextPage: cursos.length === parseInt(limit),
         hasPrevPage: page > 1
       }
     });
 
   } catch (error) {
-    console.error('Error al obtener cursos:', error);
-    res.status(500).json({ mensaje: 'Error interno del servidor' });
+    console.error('Error:', error);
+    res.status(500).json({ mensaje: 'Error al obtener los cursos' });
   }
 };
-
 
 // Obtener un curso por ID
 exports.obtenerCurso = async (req, res) => {
