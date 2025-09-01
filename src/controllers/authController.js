@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const { db } = require('../config/firebase');
+const admin = require('firebase-admin');
 
 const jwt = require('jsonwebtoken');
 const ROLES_VALIDOS = ['admin', 'docente', 'estudiante', 'comunidad'];
@@ -191,57 +192,35 @@ exports.updateUserProfile = async (req, res) => {
     const { userId } = req.params;
     const { nombre, apellido, correo, imagenPerfil } = req.body;
 
-    // Validar autenticación (puedes adaptarlo según tu middleware)
-    if (!req.user || (req.user.id !== userId && req.user.rol !== 'admin')) {
-      return res.status(403).json({ message: 'No autorizado para actualizar este perfil.' });
-    }
-
+    // Validamos que el usuario existe
     const userRef = db.collection('users').doc(userId);
     const userDoc = await userRef.get();
 
     if (!userDoc.exists) {
-      return res.status(404).json({ message: 'Usuario no encontrado' });
+      return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
     }
 
-    const updates = {};
+    // Actualizamos el documento con todos los campos, incluida la imagen
+    await userRef.update({
+      nombre,
+      apellido,
+      correo,
+      imagenPerfil, // Añadir este campo que probablemente falta
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
 
-    // Verificar si se quiere cambiar el correo
-    if (correo) {
-      const correoExistente = await db.collection('users').where('correo', '==', correo).get();
-      if (!correoExistente.empty && correoExistente.docs[0].id !== userId) {
-        return res.status(400).json({ message: 'El correo ya está en uso por otro usuario.' });
-      }
-      updates.correo = correo;
-    }
-
-    // Agregar imagen de perfil (la URL debería generarse desde el frontend o desde otro endpoint que suba a Firebase Storage)
-    if (imagenPerfil) {
-      updates.imagenPerfil = imagenPerfil;
-    }
-
-    if (nombre || apellido) {
-      updates.nombre = nombre;
-      updates.apellido = apellido;
-    }
-
-    await userRef.update(updates);
-
-    // Leer el usuario actualizado
+    // Obtenemos el usuario actualizado
     const updatedUserDoc = await userRef.get();
-    const updatedUser = updatedUserDoc.data();
+    const userData = { id: updatedUserDoc.id, ...updatedUserDoc.data() };
 
-    res.json({
-      message: "Perfil actualizado correctamente",
-      updates: {
-        nombre: updatedUser.nombre,
-        apellido: updatedUser.apellido,
-        correo: updatedUser.correo,
-        imagenPerfil: updatedUser.imagenPerfil,
-      }
+    res.status(200).json({
+      success: true,
+      message: 'Perfil actualizado correctamente',
+      ...userData
     });
   } catch (error) {
     console.error('Error al actualizar perfil:', error);
-    res.status(500).json({ message: 'Error al actualizar perfil' });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

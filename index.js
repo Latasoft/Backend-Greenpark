@@ -19,16 +19,19 @@ const archivosRoutes = require('./src/routes/archivosRoutes'); // Asegúrate que
 // Importar ruta para certificados
 const certificadosRoutes = require('./src/routes/certificadosRoutes'); // Ruta para certificados
 
+// Importar ruta para uploads
+const uploadRoutes = require('./src/routes/uploadRoutes'); // Ruta para subir archivos
+
 // Configuración CORS
 const allowedOrigins = [
   'http://localhost:5174',
   'http://localhost:5173',
+  'http://localhost:3001',
+  'http://localhost:3002',
   'https://greenpark-yjxi.onrender.com',
   'https://greenpark1.netlify.app',
   'https://greenparkacademia.com',
-  'http://localhost:5174',
-  'https://greenpark-frontend.netlify.app/',
-  
+  'https://greenpark-frontend.netlify.app/'
 ];
 
 app.use(cors({
@@ -78,6 +81,9 @@ app.use('/api/archivos', archivosRoutes);
 
 // Ruta para certificados
 app.use('/api/certificados', certificadosRoutes);
+
+// Ruta para uploads
+app.use('/api/upload', uploadRoutes);
 
 // Middleware para loguear peticiones (opcional para debug)
 app.use((req, res, next) => {
