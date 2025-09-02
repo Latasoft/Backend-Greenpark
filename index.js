@@ -33,7 +33,8 @@ const allowedOrigins = [
   'https://greenparkacademia.com',
   'https://greenpark-frontend.netlify.app/',
   'https://greenpark-frontend.netlify.app',
-  'https://backend-greenpark.onrender.com'
+  'https://backend-greenpark.onrender.com',
+  'https://www.greenparkacademia.com'
 ];
 
 app.use(cors({
@@ -104,4 +105,5 @@ app.use((err, req, res, next) => {
   console.error("Error capturado por middleware:", err.message || err);
   res.status(500).json({ mensaje: "Error interno del servidor", error: err.message || err });
 });
+
 
